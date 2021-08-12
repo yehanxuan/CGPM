@@ -1,7 +1,13 @@
 #M.set = c(10, 11)
 #r.set = c(8)
-
-ini.method = "EM"
+nFold = 10
+if (InitType == "EM"){
+    ini.method = "EM"
+} else if (InitType == "LOC"){
+    ini.method = "loc"
+} else if (InitType == "LS"){
+    ini.method = "LS"
+}
 #ini.method = "LS"
 #ini.method = "loc"
 basis.method = "bs"

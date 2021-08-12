@@ -188,6 +188,7 @@ MFPCA_EstimateMLE = function(obsData, splineObj,
      
     YVec = estimate$YVec
     loss = estimate$lossVec
+    converge = estimate$converge 
     # convert matrices SFinal to R functions
     numElem = length(levels(obsData$elemID))
     model = MFPCA_convert(SFinal, splineObj, optRank, numElem)
@@ -195,11 +196,56 @@ MFPCA_EstimateMLE = function(obsData, splineObj,
               list(tmin = tmin, tmax = tmax,
                    SFinal = SFinal, sigmaSq = sigmaSq,
                    numPCA = optRank, numElem = numElem,
-                   elemLevels = levels(obsData$elemID), YVec = YVec, step = step, like = like, gap = gap, Time = Time, loss = loss))
+                   elemLevels = levels(obsData$elemID), YVec = YVec, step = step, like = like, gap = gap, Time = Time, loss = loss, converge = converge))
     
     return(model)
 }
 
+
+# Second step estimation on the manifold
+MFPCA_SecondMLE = function(optObj, optRank, controlList, SInit, splineObj = NULL, eigenfList = NULL ){
+  SEstimate = SInit
+  iter = 0
+  flag = TRUE
+  gap = 1
+  tol = 1e-3
+  params = c(0.1, 0.618, 0.01, 0.1,0)
+  obj = optObj$objF(SEstimate)
+  objVector = c(obj)
+  #  Time = c(0, 0, 0)
+  Time = 0
+  YVec = list()
+  YVec[[1]] = SInit
+  if (!is.null(splineObj)){
+    loss = list()
+    if (!is.null(eigenfList)){
+      loss[[1]] = ComputeLoss_S(SInit, eigenfList, splineObj)
+    }
+  }
+  while(gap > tol){
+    Fit = MFPCA_SecondCore(optObj, optRank, controlList, SEstimate)
+    SEstimate = Fit$SFinal
+    objVector = c(objVector, Fit$objVec)
+    Time = c(Time, Fit$timeVec)
+    iter = iter + length(Fit$timeVec)
+    YVec = c(YVec, Fit$SVec)
+    optObj$updateSigmaSq(SEstimate, params)
+    
+    obj_new = optObj$objF(SEstimate)
+    
+    gap = obj - obj_new 
+    obj = obj_new
+    
+  }
+  TimeMatrix = cumsum(Time)
+  iter = iter + 1
+  if (gap > tol) {
+    converge = 0
+  } else {
+    converge = 1
+  }
+  return(list(SEstimate = SEstimate, iter = iter, obj = objVector, gap = gap, Time = TimeMatrix, lossVec = loss, YVec = YVec, converge = converge))
+}
 
 # Initial value estimation in the Euclidean space
 MFPCA_Initial_LS = function(optObj, optRank, controlList){
@@ -299,10 +345,14 @@ MFPCA_Selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, 
 }
 
 ### MLE selection
-MLE_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, controlList2, nFold = 10, sigmaSq, eigenfList = NULL, InitType = NULL, SInit = NULL){
+MLE_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, controlList2, nFold = 10, sigmaSq, eigenfList = NULL, InitType = NULL, SInit = NULL, cvMembership = NULL){
+   
     nSample = length(unique(obsCol$obsID))
    # nSample = nlevels(obsCol$obsID)
-    cvMembership = getCVPartition(nSample, nFold)
+    if (is.null(cvMembership)){
+      cvMembership = getCVPartition(nSample, nFold)  
+    }
+    
     L1 = length(rankSeq)
     L2 = length(lambdaSeq)
     K = splineObj$getDoF()
@@ -324,9 +374,10 @@ MLE_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, co
             sigmaSq = Init[[2]]
         }
         for (j in 1:L2){
-            testerror = rep(1e+4, nFold)
-            try({
+            testerror = rep(1e+7, nFold)
+            
                 for (cf in 1:nFold){
+                  try({
                     cvParam = list(cvMembership = cvMembership, cf = cf)
                     model = MFPCA_EstimateMLE(obsCol, splineObj, rankSeq[i], lambdaSeq[j], 
                                               controlList1, controlList2, cvParam, SInit, sigmaSq, eigenfList)
@@ -336,8 +387,9 @@ MLE_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, co
                     ErrorObj$activateCV(cvParam$cf)
                     ErrorObj$set_tuningParameter(0)
                     testerror[cf] = ErrorObj$outOfBagError(model$SFinal)
+                  })
                 }  
-            })
+            
             ErrorMat[i, j] = mean(testerror)
         }
     }
@@ -348,6 +400,105 @@ MLE_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, co
     opt_lambda = lambdaSeq[index2]
     opt_error = ErrorMat[index1, index2]
     return(list("ErrorMat" = ErrorMat, "opt_mu" = opt_lambda, "opt_rank" = opt_rank, "opt_error" = opt_error))
+}
+
+
+LogDet_select_knots = function(obsCol, order, r.set, M.set, controlList1, controlList2, nFold = 10, sigmaSq, eigenfList = NULL, InitType = NULL, SInit = NULL, cvMembership = NULL){
+  tmin = 0
+  tmax = 1
+  nSample = length(unique(obsCol$obsID))
+  # nSample = nlevels(obsCol$obsID)
+  if (is.null(cvMembership)){
+    cvMembership = getCVPartition(nSample, nFold)
+  }
+  
+  L1 = length(r.set)
+  L2 = length(M.set)
+  #ErrorMat = matrix(1e+10, L1, L2)
+  like.list = NULL
+  for (i in 1:L1){
+    r = r.set[i]
+    M.subset = M.set[M.set >= r]
+    M.l = length(M.subset)
+    if(M.l==0){               
+      print("all M < r.c")
+      return(0)
+    }
+    like.result = numeric(M.l)
+    for (j in 1:M.l){
+      splineObj = new(orthoSpline, tmin, tmax, order, M.subset[j]-2)
+      K = splineObj$getDoF()
+      if (InitType == "EM"){
+        Init = EMInit(obsCol, splineObj, M.subset[j]-2, r, sigmaSq, eigenfList)
+        SInit = Init[[1]]
+        sigmaSq = Init[[2]]
+      } else if (InitType == "LS"){
+        Init = Init_LS(obsCol, splineObj, r, pert = 0.01, sigmaSq)
+        SInit = Init[[1]]
+        sigmaSq = Init[[2]]
+      } else if (InitType == "LOC"){
+        Init = LOCInit(obsCol, splineObj,r, sigmaSq)
+        SInit = Init[[1]]
+        sigmaSq = Init[[2]]
+      }
+      testerror = rep(1e+7, nFold)
+      
+        for (cf in 1:nFold){
+          try({
+          cvParam = list(cvMembership = cvMembership, cf = cf)
+          model = MFPCA_EstimateMLE(obsCol, splineObj, r.set[i], 0, 
+                                    controlList1, controlList2, cvParam, SInit, sigmaSq, eigenfList)
+          ErrorObj = createMFPCAObjMLE(obsCol, splineObj, obsSigma = model$sigmaSq)
+          ErrorObj$setCVFold(cvParam$cvMembership)
+          ErrorObj$activateCV(cvParam$cf)
+          ErrorObj$set_tuningParameter(0)
+          testerror[cf] = ErrorObj$outOfBagError(model$SFinal)
+          })
+        }
+      
+      like.result[j] = mean(testerror)
+    }
+    like.list[[i]] = like.result
+  }
+  
+  temp = LogDet_CV(like.list, M.set, r.set)
+  index.r = temp[1]
+  index.M = temp[2]
+  r_opt = r.set[index.r]
+  M_opt = M.set[index.M]
+  return(list("M_opt" = M_opt, "r_opt" = r_opt, "like_result" = like.list))
+}
+
+
+LogDet_CV = function(result, M.set, r.set){
+  cv.mod = matrix(1e+10, length(r.set), length(M.set))
+  colnames(cv.mod) = M.set
+  rownames(cv.mod) = r.set
+  for (k in 1:length(r.set)){
+    r.c = r.set[k]
+    M.set.c = M.set[M.set >=r.c]
+    index.c = sum(M.set < r.c)
+    if (length(M.set.c) > 0){
+      for (j in 1:length(M.set.c)){
+        cv.mod[k, j+index.c] = result[[k]][j]
+      }
+    }
+  }
+  
+  index.r = 1
+  index.M = 1
+  for (j in 1:length(M.set)){
+    for (k in 1:length(r.set)){
+      if (cv.mod[k, j] < cv.mod[index.r, index.M]){
+        index.r = k
+        index.M = j
+      }
+    }
+  }
+  
+  temp = c(index.r, index.M)
+  names(temp) = c("r", "M")
+  return(temp)
 }
 
 
@@ -373,7 +524,7 @@ MFPCA_leastSquares = function(obsCol, order, nknots, rankSeq, lambdaSeq, control
 
 
 #### Main function for Rcpp MLE
-MFPCA_RcppMLE = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlList1, controlList2, nFold, sigmaSq, eigenfList = NULL, InitType = NULL,  SInit = NULL){
+MFPCA_RcppMLE = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlList1, controlList2, nFold, sigmaSq, eigenfList = NULL, InitType = NULL,  SInit = NULL, cvMembership = NULL){
     tmin = 0
     tmax = 1
     splineObj = new(orthoSpline, tmin, tmax, order, nknots)
@@ -405,10 +556,13 @@ MFPCA_RcppMLE = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlList1
     # obsCol$obsY = obsY
      
     
-    select = MLE_selection(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, controlList2, nFold, sigmaSq, eigenfList, InitType = InitType)
+    select = MLE_selection(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, controlList2, nFold, sigmaSq, eigenfList, InitType = InitType, cvMembership)
     nSample = length(unique(obsCol$obsID))
     cf = -1
-    cvMembership = getCVPartition(nSample, nFold)
+    if (is.null(cvMembership)){
+            cvMembership = getCVPartition(nSample, nFold)
+    }
+    
     cvParam = list(cvMembership = cvMembership, cf = cf)
     if (InitType == "EM"){
         Init = EMInit(obsCol, splineObj, nknots, select$opt_rank, sigmaSq, eigenfList)
@@ -432,7 +586,51 @@ MFPCA_RcppMLE = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlList1
     }
     opt_lambda = select$opt_mu
     opt_rank = select$opt_rank
-    return(list("opt_lambda" = opt_lambda, "opt_rank"= opt_rank, "loss" = loss, "model" = model))
+    converge = model$converge
+    return(list("opt_lambda" = opt_lambda, "opt_rank"= opt_rank, "loss" = loss, "model" = model, "converge" = converge))
+}
+
+
+MFPCA_LogDet = function(obsCol, order, M.set, r.set, controlList1, controlList2, nFold, sigmaSq, eigenfList = NULL,
+                        InitType = NULL, SInit = NULL, cvMembership = NULL){
+  tmin = 0
+  tmax = 1
+  
+  select = LogDet_select_knots(obsCol, order, r.set, M.set, controlList1, controlList2, nFold = 10,
+                               sigmaSq, eigenfList, InitType = InitType, cvMembership)
+  nSample = length(unique(obsCol$obsID))
+  cf = -1
+  if (is.null(cvMembership)){
+    cvMembership = getCVPartition(nSample, nFold)
+  }
+  cvParam = list(cvMembership = cvMembership, cf = cf)
+  splineObj = new(orthoSpline, tmin, tmax, order, select$M_opt - 2)
+  meanModel = fitMeanCurve(obsCol, splineObj, lambda = 0)
+  obsCol = subtractMeanCurve(meanModel, obsCol)
+  if (InitType == "EM"){
+    Init = EMInit(obsCol, splineObj, select$M_opt - 2, select$r_opt, sigmaSq, eigenfList)
+    SInit = Init[[1]]
+    sigmaSq = Init[[2]]
+  } else if (InitType == "LS"){
+    Init = Init_LS(obsCol, splineObj, select$r_opt, pert = 0.01,  sigmaSq)
+    SInit = Init[[1]]
+    sigmaSq = Init[[2]]
+  } else if (InitType == "LOC"){
+    Init = LOCInit(obsCol, splineObj, select$r_opt, sigmaSq)
+    SInit = Init[[1]]
+    sigmaSq = Init[[2]]
+  }
+  model = MFPCA_EstimateMLE(obsCol, splineObj, select$r_opt, 0, controlList1, controlList2, 
+                            cvParam, SInit, sigmaSq, eigenfList)
+  if (!is.null(eigenfList)){
+    loss = evaluateLoss(model,eigenfList)
+  } else {
+    loss = NULL
+  }
+  M_opt = select$M_opt
+  r_opt = select$r_opt
+  converge = model$converge 
+  return(list("opt_lambda" = M_opt, "opt_rank" = r_opt, "loss" = loss, "model" = model, "converge" = converge ))
 }
 
 
@@ -522,18 +720,36 @@ oneReplicate_LogDet = function(seedJ){
 #    seedJ = seedJ
     set.seed(seedJ + repID * 300)
     source("./oneReplicate/oneRep-LogDet.R")
+    cvMembership = getCVPartition_seed(samplesize, nFold = 10, seedJ)
+    if (select_Method == "knots"){
+      fit = try(MFPCA_LogDet(obsCol, mOrder, M.set, r.set, controlList1, controlList2, nFold, sig2hat, eigenfList, InitType, cvMembership) )
+    } else if (select_Method == "penalty"){
+      fit = try(MFPCA_RcppMLE(obsCol, mOrder, nKnots, r.set, lambdaSeq, controlList1, controlList2, nFold, sig2hat, eigenfList, InitType, cvMembership) )
+    }
     
+    if (inherits(fit, "try-error")){
+      converge = 0
+      # opt_lambda = fit$opt_lambda
+      #opt_rank = fit$opt_rank
+      #loss = fit$loss
+      opt_lambda = NULL
+      opt_rank = NULL
+      loss = NULL
+    } else {
+      converge = fit$converge 
+      # converge = 1
+      opt_lambda = fit$opt_lambda
+      opt_rank = fit$opt_rank
+      loss = fit$loss
+    }
 #    fit = MFPCA_RcppMLE(obsCol, mOrder, nKnots, r.set, lambdaSeq, controlList1, controlList2, nFold, sig2hat, InitType = "EM")
-    fit = MFPCA_RcppMLE(obsCol, mOrder, nKnots, r.set, lambdaSeq, controlList1, controlList2, nFold, sig2hat, eigenfList, InitType)
-    opt_lambda = fit$opt_lambda
-    opt_rank = fit$opt_rank
-    loss = fit$loss
-    return(list("loss" = loss, "lambda" = opt_lambda, "rank" = opt_rank))
+    
+    return(list("loss" = loss, "lambda" = opt_lambda, "rank" = opt_rank, "converge" = converge))
 }
 
 oneReplicateWrap_LogDet = function(seedJ){
-    try({
-        eval = oneReplicate_LogDet(seedJ)
+     try({
+       eval = oneReplicate_LogDet(seedJ)
     })
     return(eval)
 }

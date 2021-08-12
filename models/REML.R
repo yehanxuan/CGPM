@@ -6,7 +6,7 @@
 ##         the approximate CV score
 
 fpca.mle<-function(data.m, M.set,r.set,ini.method="EM", basis.method="bs",sl.v=rep(0.5,10),max.step=50,
-                   grid.l=seq(0,1,0.01),grids=seq(0,1,0.002), eigenfList = NULL){
+                   grid.l=seq(0,1,0.01),grids=seq(0,1,0.002), eigenfList = NULL, CVmethod = "score"){
     ##para:data.m: the data matrix with three columns: column 1: subject ID, column 2: observation, column 3: measurement time
     ##M.set--# of basis functions; r.set: dimension of the process
     ##ini.method: initial method for Newton, one of "EM","loc"; 
@@ -111,9 +111,13 @@ fpca.mle<-function(data.m, M.set,r.set,ini.method="EM", basis.method="bs",sl.v=r
         
         result[[k]]<-result.c
     }  
-    
     ##(vi) model selection
-    mod.sele<-fpca.cv(result,M.set,r.set,tol=tol)
+    if (CVmethod == "like"){
+      mod.sele = REML_CV(result, M.set, r.set)
+    } else if (CVmethod == "score"){
+      mod.sele<-fpca.cv(result,M.set,r.set,tol=tol)
+    }
+    
     temp<-mod.sele[[3]]
     index.r<-temp[1] 
     index.M<-temp[2]
@@ -482,6 +486,49 @@ fpca.cv<-function(result.new,M.set,r.set,tol=1e-3){
 }
 
 
+REML_CV = function(result, M.set, r.set, tol=1e-3){
+  cv.mod<-matrix(-99,length(r.set),length(M.set))
+  colnames(cv.mod)<-M.set
+  rownames(cv.mod)<-r.set
+  cond.mod <- cv.mod
+  
+  
+  cv.like = cv.mod + 1e+10
+  
+  for (k in 1:length(r.set)){
+    r.c = r.set[k]
+    M.set.c = M.set[M.set >= r.c]
+    index.c = sum(M.set<r.c)
+    
+    if (length(M.set.c)>0){
+      for (j in 1:length(M.set.c)){
+        cv.mod[k, j+index.c] = result[[k]]$cv[j]
+        cond.mod[k, j+index.c] = result[[k]]$converge[j]
+        if (cv.mod[k, j+index.c]!=(-99) && cond.mod[k, j+index.c] < tol){
+          cv.like[k, j+index.c] <- result[[k]]$`-2*loglike`["newton",][j]
+        }
+      }
+    }
+  }
+  
+  index.r = 1
+  index.M = 1
+  for (j in 1:length(M.set)){
+    for (k in 1:length(r.set)){
+      if (cv.like[k,j] < cv.like[index.r, index.M]){
+        index.r = k
+        index.M = j
+      }
+    }
+  }
+  
+  temp <- c(index.r, index.M)
+  names(temp)<-c("r","M")
+  selection = list("cv" = cv.mod, "converge" = cond.mod , "select model" = temp)
+  return(selection)
+}
+
+
 ###name: fpca.format
 ##purpose: format the data into data.list as the input of fpca.fit and also exclude subjects with only one measurement 
 fpca.format<-function(data.m){
@@ -581,19 +628,78 @@ MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = 
 }
 
 
+REML_selection = function(newObsCol, M.set, r.set, ini.method, nFold=10, sig.EM=1, eigenfList = NULL,cvMembership = NULL){
+  basis.method = "bs"
+  sl.v = rep(0.5, 10)
+  max.step = 50
+  grid.l = seq(0,1,0.01)
+  grids= seq(0,1,0.002)
+  #sig.EM = 1
+  
+  L1 = length(r.set)
+  L2 = length(M.set)
+  ErrorMat = matrix(1e+10, L1, L2)
+  for (i in 1:L1){
+    for (j in 1:L2){
+      testerror = rep(1e+7, nFold)
+      for (cf in 1:nFold){
+        try({
+          trainIndex = which(cf == cvMembership)
+          test_newObsCol =  newObsCol[newObsCol$obsID %in% trainIndex, ]
+          train_newObsCol = newObsCol[!(newObsCol$obsID %in% trainIndex), ] 
+          #cvParam = list(cvMembership = cvMembership, cf = cf)
+          train_result = fpca.mle(train_newObsCol, M.set[j], r.set[i], ini.method, basis.method, sl.v, max.step, grid.l,
+                                  grids, eigenfList)
+          eigenf.train = train_result$eigenfunctions
+          eigenv.train = train_result$eigenvalues
+          covTrain = t(eigenf.train)%*%diag(eigenv.train)%*%eigenf.train
+          train_result$error_var
+          test_data.list = fpca.format(test_newObsCol)
+          ntest = length(test_data.list)
+          testerror[cf] = loglike.cov.all(covTrain, sqrt(train_result$error_var), test_data.list, ntest)
+        })
+      }
+      ErrorMat[i, j] = mean(testerror)
+    }
+  }
+  index = which(ErrorMat== min(ErrorMat, na.rm = TRUE), arr.ind = TRUE)
+  index1 = index[1]
+  index2 = index[2]
+  r_opt = r.set[index1]
+  M_opt = M.set[index2]
+  opt_error = ErrorMat[index1, index2]
+  return(list("ErrorMat" = ErrorMat, "M_opt" = M_opt, "r_opt" = r_opt, "opt_error" = opt_error))
+}
+
+
 oneReplicate_REML = function(seedJ){
     set.seed(seedJ + repID * 300)
     source("./oneReplicate/oneRep-REML.R")
-    result = fpca.mle(newObsCol, M.set, r.set, ini.method, basis.method, sl.v, max.step, grid.l, grids, eigenfList)
+   # cvMembership = getCVPartition_seed(n, nFold = 10, seedJ)
+  #  select = REML_selection(newObsCol, M.set,r.set,ini.method,nFold,sig.EM,eigenfList, cvMembership)
+  #  M_opt = select$M_opt
+  #  r_opt = select$r_opt
+    
+    result = fpca.mle(newObsCol, M.set, r.set, ini.method, basis.method, sl.v, max.step, grid.l, grids, eigenfList, CVmethod = "score")
+  #  result = fpca.mle(newObsCol, M_opt, r_opt,ini.method, basis.method, sl.v, max.step,
+  #                   grid.l, grids, eigenfList, CVmethod = "score")
     grids.new = result$grid
+    
     M_opt = result$selected_model[[1]]
     r_opt = result$selected_model[[2]]
+    
+    conv = result$converge[as.character(r_opt), as.character(M_opt)]
+    if (conv < 1e-3){
+      converge = 1
+    } else {
+      converge = 0 
+    }
     eigenfest = result$eigenfunctions
     # True function interpolation
     # eigenfList = get_eigenfunList(pcaTrans, fExpNum, splitP)
     fList_est = Generate_fList(grids.new, eigenfest)
     loss = ComputeLoss(fList_est, eigenfList)
-    return(list( "loss" = loss, "M_opt" = M_opt, "rank" = r_opt))
+    return(list( "loss" = loss, "M_opt" = M_opt, "rank" = r_opt, "converge" = converge))
 }
 
 

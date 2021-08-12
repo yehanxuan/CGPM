@@ -203,12 +203,12 @@ LocLin.Ini<-function(data.list,n,nmax,grid.l,grids,r){
     conver<-HatGOff(fitmu,data,N)  ##convert to off diagonal pair forma
     Cova<-conver[[2]]
     CovT<-conver[[3]]
-   #hcov.cv<-h.select(t(CovT),Cova,method="cv") 
-     hcov.cv = h.select(t(CovT),Cova,method="aicc")
+   hcov.cv<-h.select(t(CovT),Cova,method="cv")
+   #  hcov.cv = h.select(t(CovT),Cova,method="aicc")
     #hcov.cv = h.select(t(CovT),Cova)
     #G(t,t)+\sigma^2
-   # hsig.cv<-h.select(t,(y-fitmu)^2,method="cv")
-    hsig.cv = h.select(t,(y-fitmu)^2,method = "aicc")
+    hsig.cv<-h.select(t,(y-fitmu)^2,method="cv")
+   # hsig.cv = h.select(t,(y-fitmu)^2,method = "aicc")
    # hsig.cv = h.select(t,(y-fitmu)^2)
     ###local linear fitting
     lin.result<-LocLinEst.new(Obs,T,N,grid.l,hmu.cv,hcov=hcov.cv,hsig.cv)

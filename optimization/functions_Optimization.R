@@ -393,8 +393,12 @@ Newton.New<-function(B.c, phi.aux, sig.c, Lambda.c,data.list,n,sl.v,max.step=50,
    break()
  }
  like[i+1]<-like.c 
+ 
+ 
+ objF_old = like.c 
 ##loops
  while(i<max.step && tol.c>=tol){
+   # They use the aabsolute value as tolerance, maybe we can change it to objective function
  i<-i+1
  #print(paste("begin iter",i))
  start = as.vector(proc.time()[1])
@@ -477,17 +481,21 @@ Newton.New<-function(B.c, phi.aux, sig.c, Lambda.c,data.list,n,sl.v,max.step=50,
    like[i+1]<-(-99)
    break()
  }
+ 
  like[i+1]<-like.c 
  
+ ## Add new criterion here 
+ objF_new = like.c 
+ tol.c = abs(objF_new - objF_old)
  
- 
+ objF_old = objF_new
  
  if(i<max.step){  
  gradL.result[i+1,]<-temp.Lam[[3]]
  }
 
 ## check the abs of gradients 
- tol.c<-max(abs(gradL.result[i,]),abs(gradB.result[,,i]))
+# tol.c<-max(abs(gradL.result[i,]),abs(gradB.result[,,i]))
 
 ##print to screen
  #print(c(paste("end iter",i),round(like[i],3)))
@@ -710,7 +718,7 @@ return(result)
 }
 
 #################################### VII: initial values
-Initial<-function(r,ini.method,data.list,n,nmax,grid.l,grids,M.EM=25,iter.num=50,basis.EM="ns",sig.EM, eigenfList = NULL){
+Initial<-function(r,ini.method,data.list,n,nmax,grid.l,grids,M.EM=25,iter.num=50,basis.EM="ns",sig.EM, eigenfList = NULL, InitType = NULL){
 
  band<-NULL
  if (ini.method=="loc"){
@@ -724,10 +732,11 @@ Initial<-function(r,ini.method,data.list,n,nmax,grid.l,grids,M.EM=25,iter.num=50
  obj = NULL
  Time = NULL
  loss = NULL
+ converge = NULL
  }  
 
  if(ini.method=="EM"){
- temp.EM<-EM(data.list,n,nmax,grids,M.EM,iter.num,r,basis.EM,sig.EM, eigenfList)
+ temp.EM<-EM(data.list,n,nmax,grids,M.EM,iter.num,r,basis.EM,sig.EM, eigenfList, InitType)
  eigenf<-temp.EM[[1]]*sqrt(length(grids))
  eigenv<-temp.EM[[2]]
  sig2hat<-temp.EM[[3]]^2 
@@ -736,6 +745,7 @@ Initial<-function(r,ini.method,data.list,n,nmax,grid.l,grids,M.EM=25,iter.num=50
  obj = temp.EM[[6]]
  Time = temp.EM[[7]]
  loss = temp.EM[[8]]
+ converge = temp.EM[[9]]
  }
   
  if(ini.method=="Ken"){   ##need to be defined
@@ -753,7 +763,7 @@ Initial<-function(r,ini.method,data.list,n,nmax,grid.l,grids,M.EM=25,iter.num=50
  like<-(-99)
  }
 
-result<-list(sig2hat,covmatrix,eigenf,eigenv,like,band, meanEst, step, obj, Time, loss)
+result<-list(sig2hat,covmatrix,eigenf,eigenv,like,band, meanEst, step, obj, Time, loss, converge)
 return(result)
 }
 

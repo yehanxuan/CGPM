@@ -163,9 +163,11 @@ MFPCA_SecondfrobDiverg = function(optObj, optRank, controlList, SInit, splineObj
 }
 
 frobDiverg_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1 = NULL, controlList2, nFold = 10, 
-                                 sigmaSq, eigenfList = NULL, InitType = NULL, SInit = NULL){
+                                 sigmaSq, eigenfList = NULL, InitType = NULL, SInit = NULL, cvMembership = NULL){
     nSample = length(unique(obsCol$obsID))
-    cvMembership = getCVPartition(nSample, nFold)
+    if (is.null(cvMembership)){
+      cvMembership = getCVPartition(nSample, nFold)
+    }
     L1 = length(rankSeq)
     L2 = length(lambdaSeq)
     K = splineObj$getDoF()
@@ -188,8 +190,9 @@ frobDiverg_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlLi
         for (j in 1:L2){
             #testerror = rep(0, nFold)
             testerror = rep(1e+4, nFold)
-            try({
+            
                 for (cf in 1:nFold){
+                  try({
                     cvParam = list(cvMembership = cvMembership, cf = cf)
                     model = MFPCA_EstimatefrobDiverg(obsCol, splineObj, rankSeq[i], lambdaSeq[j], 
                                                      controlList1, controlList2, cvParam, SInit, sigmaSq, eigenfList)
@@ -198,8 +201,9 @@ frobDiverg_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlLi
                     ErrorObj$activateCV(cvParam$cf)
                     ErrorObj$set_tuningParameter(0)
                     testerror[cf] = ErrorObj$outOfBagError(model$SFinal)
+                  })
                 }  
-            })
+            
             ErrorMat[i, j] = mean(testerror)
         }
     }
@@ -214,20 +218,23 @@ frobDiverg_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlLi
 
 
 MFPCA_frobDiverg = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlList1, controlList2,
-                            nFold, sigmaSq, eigenfList = NULL, InitType = NULL, SInit = NULL){
+                            nFold, sigmaSq, eigenfList = NULL, InitType = NULL, SInit = NULL, cvMembership = NULL){
     tmin = 0
     tmax = 1
     splineObj = new(orthoSpline, tmin, tmax, order, nknots)
     K = splineObj$getDoF()
     ### Add meanModel here
-   # meanModel = fitMeanCurve(obsCol, splineObj, lambda = 0)
-  #  obsCol = subtractMeanCurve(meanModel, obsCol)
+    meanModel = fitMeanCurve(obsCol, splineObj, lambda = 0)
+    obsCol = subtractMeanCurve(meanModel, obsCol)
     
     select = frobDiverg_selection(obsCol, splineObj, rankSeq, lambdaSeq, controlList1,
-                                  controlList2, nFold, sigmaSq, eigenfList, InitType = InitType)
+                                  controlList2, nFold, sigmaSq, eigenfList, InitType = InitType, cvMembership)
     nSample = length(unique(obsCol$obsID))
     cf = -1
-    cvMembership = getCVPartition(nSample, nFold)
+    if (is.null(cvMembership)){
+      cvMembership = getCVPartition(nSample, nFold)
+    }
+    
     cvParam = list(cvMembership = cvMembership, cf = cf)
     if (InitType == "EM"){
         Init = EMInit(obsCol, splineObj, nknots, select$opt_rank, sigmaSq, eigenfList)
@@ -258,14 +265,28 @@ MFPCA_frobDiverg = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlLi
 oneReplicate_frobDiverg = function(seedJ){
     set.seed(seedJ + repID * 300)
     source("./oneReplicate/oneRep-frobDiverg.R")
+    cvMembership = getCVPartition_seed(samplesize, nFold = 10, seedJ)
 #    fit = MFPCA_frobDiverg(obsCol, mOrder, nKnots, r.set, lambdaSeq,
 #                           controlList1, controlList2, nFold, sig2hat, InitType = "EM")
-    fit = MFPCA_frobDiverg(obsCol, mOrder, nKnots, r.set, lambdaSeq,
-                                                    controlList1, controlList2, nFold, sig2hat, eigenfList, InitType)
-    opt_lambda = fit$opt_lambda
-    opt_rank = fit$opt_rank
-    loss = fit$loss
-    return(list("loss" = loss, "lambda" = opt_lambda, "rank" = opt_rank))
+    fit = try({
+      MFPCA_frobDiverg(obsCol, mOrder, nKnots, r.set, lambdaSeq,
+                       controlList1, controlList2, nFold, sig2hat, eigenfList, InitType, cvMembership = cvMembership)
+      
+    }) 
+    
+    if (inherits(fit, "try-error")){
+      converge = 0
+      opt_lambda = NULL
+      opt_rank = NULL
+      loss = NULL
+    } else {
+      converge = 1
+      opt_lambda = fit$opt_lambda
+      opt_rank = fit$opt_rank
+      loss = fit$loss
+    }
+    
+    return(list("loss" = loss, "lambda" = opt_lambda, "rank" = opt_rank, "converge" = converge))
 }
 
 oneReplicateWrap_frobDiverg = function(seedJ){

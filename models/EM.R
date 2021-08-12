@@ -16,13 +16,13 @@ Format.EM <- function(data.list,n,nmax,grid){
     
     
     timeindex = floor(t*length(grid))+1
-    result = list(y=y,curve=data[,1],n=n,timeindex=timeindex)
+    result = list(y=y,curve=data[,1],n=n,timeindex=timeindex, t=t, N = N, T = T, Obs = Obs)  # add a t here (modified)
     return(result)
 }
 
 
 ###EM
-EM<-function(data.list,n,nmax,grids,M.EM,iter.num,r.EM,basis.EM,sig.EM, eigenfList = NULL){
+EM<-function(data.list,n,nmax,grids,M.EM,iter.num,r.EM,basis.EM,sig.EM, eigenfList = NULL, InitType = NULL){
     ## sig.EM is standard error
     
     # R.inv<-R.inverse(M.EM,grids)
@@ -32,7 +32,7 @@ EM<-function(data.list,n,nmax,grids,M.EM,iter.num,r.EM,basis.EM,sig.EM, eigenfLi
     ## (a) formatting data for use in the EM routine
     data.obj <- Format.EM(data.list,n,nmax,grids) 
     ## (b) EM estimation of eigenfunctions (thetand PC scores (alpha)
-    EMest <- fpcaEM(data.obj,k=r.EM,df=M.EM, grid = grids, maxit = iter.num, tol = 0.001, pert = 0.01, sigma = sig.EM^2,basis.EM, eigenfList, R.inv)
+    EMest <- fpcaEM(data.obj,k=r.EM,df=M.EM, grid = grids, maxit = iter.num, tol = 0.001, pert = 0.01, sigma = sig.EM^2,basis.EM, eigenfList, R.inv, InitType)
     
     ####Add one line to compute the mean function of EM
     B = EMest$B
@@ -100,8 +100,9 @@ EM<-function(data.list,n,nmax,grids,M.EM,iter.num,r.EM,basis.EM,sig.EM, eigenfLi
     obj = EMest$obj
     Time = EMest$Time
     loss  =EMest$lossVec
+    converge = EMest$converge 
     ##result
-    result<-list(EMeigenvec.est,EMeigenval.est,EMsigma.est, meanEst, step, obj, Time, loss)
+    result<-list(EMeigenvec.est,EMeigenval.est,EMsigma.est, meanEst, step, obj, Time, loss, converge)
     return(result)
     
 }
@@ -124,7 +125,7 @@ calclike <- function(y, sigma, Dinv, theta, B, curve){
 }
 
 
-fpcaEM <- function(obj, k = 2, df = 5, grid = seq(0.01, 1, length = 100), maxit = 50, tol = 0.001, pert = 0.01, sigma = 1, basis.method="ns", eigenfList = NULL, R.inv=NULL){
+fpcaEM <- function(obj, k = 2, df = 5, grid = seq(0.01, 1, length = 100), maxit = 50, tol = 0.001, pert = 0.01, sigma = 1, basis.method="ns", eigenfList = NULL, R.inv=NULL, InitType = NULL){
     
     ## computes the MLEs of alpha (PC score), theta (eigenfunctions represented in spline basis)
     
@@ -137,7 +138,12 @@ fpcaEM <- function(obj, k = 2, df = 5, grid = seq(0.01, 1, length = 100), maxit 
     curve <- obj$curve                   
     ### a vector with the curve number corresponding to each value of y 
     
-    N <- obj$n                           
+    N <- obj$n     
+    t = obj$t
+    N_LOC = obj$N
+    T_LOC = obj$T 
+    Obs_LOC = obj$Obs
+    data<-TranMtoV(Obs_LOC,T_LOC,N_LOC)
     ### number of observations (= n, in our notation)
     
     if(basis.method=="ns"){
@@ -159,6 +165,9 @@ fpcaEM <- function(obj, k = 2, df = 5, grid = seq(0.01, 1, length = 100), maxit 
         B.orth = qr.Q(qr(B)) 
         B <- B.orth[timeindex, ]
     }
+    # Only use poly basis 
+    basis.method = "poly"
+    
     if(basis.method=="poly"){
         #  print("poly")
         ###R.inv<-R.inverse(df)
@@ -175,7 +184,8 @@ fpcaEM <- function(obj, k = 2, df = 5, grid = seq(0.01, 1, length = 100), maxit 
     } 
     
     R.old <- 0    
-    R.new <- 1   
+    #R.new <- 1  
+    R.new = 1e10
     #ind <- 1  
     ind <- 0
     theta.zero <- solve(t(B) %*% B, t(B)) %*% y 
@@ -191,6 +201,45 @@ fpcaEM <- function(obj, k = 2, df = 5, grid = seq(0.01, 1, length = 100), maxit 
     alpha <- getemalpha(y, curve, theta, B, alpha, sigma = sigma) 
     ## Add likelihood here, we want to monitor the likelihood
     
+    if ( isTRUE(InitType == "LOC") ){
+        grid.l=seq(0,1,0.01)
+        hmu.cv<-h.select(t,y,method="cv")
+        fitmu<-sm.regression(t,y,h=hmu.cv,poly.index=1,eval.points=t)$estimate 
+        conver<-HatGOff(fitmu,data,N_LOC)  ##convert to off diagonal pair forma
+        Cova<-conver[[2]]
+        CovT<-conver[[3]]
+        hcov.cv<-h.select(t(CovT),Cova,method="cv")
+        hsig.cv = h.select(t,(y-fitmu)^2,method = "cv")
+        lin.result<-LocLinEst.new(Obs_LOC,T_LOC,N_LOC,grid.l,hmu.cv,hcov=hcov.cv,hsig.cv)
+        muhat<-lin.result[[1]]
+        covmatrix<-lin.result[[2]]
+        sig2hat<-lin.result[[4]]/(1-0)
+        ###project on a finer grid
+        timeindex_LOC<-floor(grids*length(grid.l))+1
+        timeindex_LOC[length(grids)]<-length(grid.l)
+        covmatrix<-covmatrix[timeindex_LOC,timeindex_LOC]
+        
+        ##get eigenfunctions and eigenvalues 
+        eigen.c<-EigenC_LOC(covmatrix,grids)
+        eigenf.c<-eigen.c[[1]][,1:k]
+        eigenv.c<-eigen.c[[2]][1:k]
+        
+        eigenfest_LOC = t(eigenf.c)
+        
+        tmp1 = matrix(rep(sqrt(eigenv.c), N), nrow = N, byrow=TRUE)
+        prod = array(1, c(N, k, k))
+        for (i in 1:N){
+          prod[i, ,] = sqrt(eigenv.c)%*%t(sqrt(eigenv.c))
+        }
+        alpha <- list(alpha = tmp1, alphaprod = prod) 
+    
+        theta = t(eigenfest_LOC%*%B.orth/dim(B.orth)[1])
+        alpha <- getemalpha(y, curve, theta, B, alpha) 
+        sigma = sig2hat ## square here 
+        
+          
+    }
+    
     loss = list()
     if (!is.null(eigenfList)){
       EMeigenvec = Generate_EM_eigen(basis.method = "poly", alpha, theta, k, df, grid, R.inv)
@@ -199,20 +248,27 @@ fpcaEM <- function(obj, k = 2, df = 5, grid = seq(0.01, 1, length = 100), maxit 
     
     #loss = computeLoss_EM(EMeigenvec, grid, eigenfList)
     
-    obj = c( -2 * calclike(y, sigma, alpha$Dinv, theta, B, curve)/N )
+    objF = c( -2 * calclike(y, sigma, alpha$Dinv, theta, B, curve)/N )
    # Time = c(0,0,0)
     Time = 0
-    while(abs(R.old - R.new)/R.new > tol & (ind < maxit)){    
+    #while(abs(R.old - R.new)/R.new > tol & (ind < maxit)){  
+    while(abs(R.old - R.new)> tol & (ind < maxit)){    
         start = as.vector(proc.time()[1])
         ind <- ind + 1
        # sigma <- getsigma(y, curve, B, theta, alpha, sigma)   
         theta <- getemtheta(y, curve, alpha, B, theta) 
         alpha <- getemalpha(y, curve, theta, B, alpha, sigma = sigma) 
         sigma <- getsigma(y, curve, B, theta, alpha, sigma) 
+        
+        #### If we want to make the coparison fair, we should make change 
+        
+        
+        ##### Original code 
         R.old <- R.new 
-        R.new <- sum((y - (B %*% theta * alpha$alpha[curve, ]) %*% rep(1, k))^2)
+        #R.new <- sum((y - (B %*% theta * alpha$alpha[curve, ]) %*% rep(1, k))^2)
         #         print(R.new) 
-        R.new
+        #R.new
+        
         calclike(y, sigma, alpha$Dinv, theta, B, curve) 
         EMeigenvec = Generate_EM_eigen(basis.method = "poly",alpha, theta, k, df, grid, R.inv)
         #loss = c( loss, computeLoss_EM(EMeigenvec, grid, eigenfList))
@@ -223,11 +279,12 @@ fpcaEM <- function(obj, k = 2, df = 5, grid = seq(0.01, 1, length = 100), maxit 
         
         Interval = as.vector(proc.time()[1]) - start
         
-        
-        obj = c(obj, -2 * calclike(y, sigma, alpha$Dinv, theta, B, curve)/N )
+        R.new =  -2 * calclike(y, sigma, alpha$Dinv, theta, B, curve)/N 
+        objF = c(objF, -2 * calclike(y, sigma, alpha$Dinv, theta, B, curve)/N )
        # Time = rbind(Time, Interval[1:3])
         #Time = rbind(Time, Interval)
         Time = c(Time, Interval)
+        tol.c = abs(R.old - R.new)
     }  
     # Time = as.matrix(Time)
     # TimeMatrix = apply(Time, 2, cumsum)
@@ -235,7 +292,12 @@ fpcaEM <- function(obj, k = 2, df = 5, grid = seq(0.01, 1, length = 100), maxit 
     step = ind + 1
     temp <- svd(theta)  
     ### add iterations number and likelihood 
-    result = list(alpha = alpha, theta = theta, B = B, theta.zero = theta.zero, sigma = sigma, step = step, obj = obj, Time = TimeMatrix, lossVec = loss)
+    if (tol.c < tol) {
+      converge = 1
+    } else {
+      converge = 0
+    }
+    result = list(alpha = alpha, theta = theta, B = B, theta.zero = theta.zero, sigma = sigma, step = step, obj = objF, Time = TimeMatrix, lossVec = loss, converge = converge)
     return(result)
 }
 
@@ -337,15 +399,18 @@ init <- function(y, timeindex, curve, B, k, pert = 0){
 }
 
 
-EM_selection = function(newObsCol, M.set, r.set, basis.EM="poly", nFold = 10, eigenfList = NULL){
+EM_selection = function(newObsCol, M.set, r.set, basis.EM="poly", nFold = 10, eigenfList = NULL, InitType = NULL, cvMembership = NULL, grids= seq(0,1,0.002)){
     
     nmax<-max(table(newObsCol[,1]))  
     L1<-min(as.numeric(newObsCol[,3]))              ##range of the time 
     L2<-max(as.numeric(newObsCol[,3]))
     data.list = fpca.format(newObsCol)
     n<-length(data.list)    ##number of subjects
+    if (is.null(cvMembership)){
+      cvMembership = getCVPartition(n, nFold)
+    }
     
-    cvMembership = getCVPartition(n, nFold)
+    # max( unlist( lapply(data.list, function(x) dim(x[[1]])[1] ) ) )
     
     if(n==0){ 
         print("error: no subject has more than one measurements!")
@@ -379,28 +444,31 @@ EM_selection = function(newObsCol, M.set, r.set, basis.EM="poly", nFold = 10, ei
         
         names.m <- c("EM")
         
-        ErrorVec = rep(0, M.l)
+        ErrorVec = rep(1e10, M.l)
         for (i in 1:M.l){
             M.EM = M.set[i]
-            testerror = rep(0, nFold)
+            testerror = rep(1e7, nFold)
             for (cf in 1:nFold){
+              try({
                 trainIndex = c(cvMembership != cf)
                 testIndex = c(cvMembership == cf)
                 train.data.list = data.list.new[trainIndex]
                 test.data.list = data.list.new[testIndex]
                 ntest = length(test.data.list)
                 ### Do we need to modify nmax here?? 
-                temp.EM = EM(train.data.list, length(train.data.list), nmax, grids, M.EM, iter.num = 50, r.c , basis.EM = basis.EM, sig.EM, eigenfList)
+                nmax_train = max( unlist( lapply(train.data.list, function(x) dim(x[[1]])[1] ) ) )
+                temp.EM = EM(train.data.list, length(train.data.list), nmax_train, grids, M.EM, iter.num = 50, r.c , basis.EM = basis.EM, sig.EM, eigenfList, InitType)
                 EMeigenvec.est<-temp.EM[[1]]*sqrt(length(grids))
                 EMeigenval.est<-temp.EM[[2]]
                 EMsigma.est<-temp.EM[[3]]
                 if (r.c == 1){
-                    covmatrix.EM = EMeigenval.est*EMeigenvec.est%*%t(EMeigenvec.est)
+                  covmatrix.EM = EMeigenval.est*EMeigenvec.est%*%t(EMeigenvec.est)
                 } else {
-                    covmatrix.EM<-EMeigenvec.est%*%diag(EMeigenval.est)%*%t(EMeigenvec.est)
+                  covmatrix.EM<-EMeigenvec.est%*%diag(EMeigenval.est)%*%t(EMeigenvec.est)
                 }
                 test.like.EM<-loglike.cov.all(covmatrix.EM,EMsigma.est, test.data.list, ntest) ### mean(-2*loglikelihood) in optimization.R
                 testerror[cf] = test.like.EM
+              })
             }
             ErrorVec[i] = mean(testerror)
             #temp = Initial(r, ini.method = "EM", data.list.new, n, nmax, grid.l, grids, M.EM, basis.EM = basis.EM)
@@ -459,7 +527,7 @@ EM.CV = function(result, M.set, r.set){
 }
 
 
-MFPCA_EM = function(obsCol, M.set, r.set, sig.EM, splineObj = NULL, eigenfList = NULL){
+MFPCA_EM = function(obsCol, M.set, r.set, sig.EM, splineObj = NULL, eigenfList = NULL,InitType = NULL){
     tmin = 0
     tmax = 1
     newObsCol = obsCol[, -2]
@@ -492,9 +560,9 @@ MFPCA_EM = function(obsCol, M.set, r.set, sig.EM, splineObj = NULL, eigenfList =
         data.list.new[[i]][[1]]<-cur
     }
    #select = EM_selection(newObsCol, M.set, r.set, basis.EM = "poly", nFold = 10)
-   select = EM_selection(newObsCol, M.set, r.set, basis.EM = "poly", nFold = 10, eigenfList)
+   select = EM_selection(newObsCol, M.set, r.set, basis.EM = "poly", nFold = 10, eigenfList, InitType)
    IniVal = Initial(select$r_opt, ini.method = "EM", data.list.new, n, nmax, grid.l, grids,
-                    M.EM = select$M_opt, iter.num = 50, basis.EM = "poly", sig.EM = sig.EM)
+                    M.EM = select$M_opt, iter.num = 50, basis.EM = "poly", sig.EM = sig.EM, InitType)
    sig2hat = IniVal[[1]]
    covmatrix.ini<-IniVal[[2]]
    eigenf.ini<-IniVal[[3]]
@@ -544,9 +612,10 @@ MFPCA_EM = function(obsCol, M.set, r.set, sig.EM, splineObj = NULL, eigenfList =
 oneReplicate_EM = function(seedJ){
     set.seed(seedJ + repID * 300)
     source("./oneReplicate/oneRep-EM.R")
-    select = EM_selection(newObsCol, M.set, r.set, basis.EM = "poly", nFold = 10, eigenfList)
-    IniVal = Initial(select$r_opt, ini.method ="EM", data.list.new, n, nmax, grid, grids,M.EM = select$M_opt, iter.num = 50,basis.EM = "poly",
-                    sig.EM = sig.EM, eigenfList)
+    cvMembership = getCVPartition_seed(samplesize, nFold = 10, seedJ)
+    select = EM_selection(newObsCol, M.set, r.set, basis.EM = "poly", nFold = 10, eigenfList, InitType, cvMembership)
+    IniVal = Initial(select$r_opt, ini.method ="EM", data.list.new, n, nmax, grid.l, grids,M.EM = select$M_opt, iter.num = 50,basis.EM = "poly",
+                    sig.EM = sig.EM, eigenfList, InitType)
     
     
     sig2hat = IniVal[[1]]
@@ -557,13 +626,14 @@ oneReplicate_EM = function(seedJ){
     #    grids.new = res$workGrid
     step = IniVal[[8]]
     obj = IniVal[[9]]
+    converge = IniVal[[12]]
     eigenfest = t(eigenf.ini)
     # eigenfList = get_eigenfunList(pcaTrans, fExpNum, splitP)
     fList_est = Generate_fList(grids, eigenfest)
     loss = ComputeLoss(fList_est, eigenfList)
     r_opt = select$r_opt
     M_opt = select$M_opt
-    return(list("loss" = loss, "result2" = M_opt, "rank" = r_opt))
+    return(list("loss" = loss, "result2" = M_opt, "rank" = r_opt, "converge" = converge))
 }
 
 

@@ -165,9 +165,12 @@ MFPCA_SecondVNDiv = function(optObj, optRank, controlList, SInit, splineObj, eig
 
 
 VNDiv_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1 = NULL, controlList2, nFold = 10, 
-                           sigmaSq, eigenfList = NULL,InitType = NULL, SInit = NULL){
+                           sigmaSq, eigenfList = NULL,InitType = NULL, SInit = NULL, cvMembership = NULL){
     nSample = length(unique(obsCol$obsID))
-    cvMembership = getCVPartition(nSample, nFold)
+    if (is.null(cvMembership)){
+        cvMembership = getCVPartition(nSample, nFold)
+    }
+    
     L1 = length(rankSeq)
     L2 = length(lambdaSeq)
     K = splineObj$getDoF()
@@ -189,9 +192,9 @@ VNDiv_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1 =
         }
         for (j in 1:L2){
             testerror = rep(1e+4, nFold)
-            try({
+            
                 for (cf in 1:nFold){
-                    
+                    try({
                     cvParam = list(cvMembership = cvMembership, cf = cf)
                     model = MFPCA_EstimateVNDiv(obsCol, splineObj, rankSeq[i], lambdaSeq[j], 
                                                 controlList1, controlList2, cvParam, SInit = SInit, sigmaSq, eigenfList)
@@ -200,8 +203,9 @@ VNDiv_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1 =
                     ErrorObj$activateCV(cvParam$cf)
                     ErrorObj$set_tuningParameter(0)
                     testerror[cf] = ErrorObj$outOfBagError(model$SFinal)
+                    })
                 }
-            })
+            
             ErrorMat[i, j] = mean(testerror)
         }
     }
@@ -215,7 +219,7 @@ VNDiv_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1 =
 }
 
 MFPCA_VNDiv = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlList1, controlList2,
-                       nFold, sigmaSq, eigenfList = NULL, InitType = NULL, SInit = NULL){
+                       nFold, sigmaSq, eigenfList = NULL, InitType = NULL, SInit = NULL, cvMembership = NULL){
     tmin = 0
     tmax = 1
     splineObj = new(orthoSpline, tmin, tmax, order, nknots)
@@ -223,12 +227,13 @@ MFPCA_VNDiv = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlList1, 
     ### Add meanModel here
     meanModel = fitMeanCurve(obsCol, splineObj, lambda = 0)
     obsCol = subtractMeanCurve(meanModel, obsCol)
-    #####
     select = VNDiv_selection(obsCol, splineObj, rankSeq, lambdaSeq, controlList1,
-                             controlList2, nFold, sigmaSq, eigenfList, InitType = InitType)
+                             controlList2, nFold, sigmaSq, eigenfList, InitType = InitType, cvMembership)
     nSample = length(unique(obsCol$obsID))
     cf = -1
-    cvMembership = getCVPartition(nSample, nFold)
+    if (is.null(cvMembership)){
+        cvMembership = getCVPartition(nSample, nFold)
+    }
     cvParam = list(cvMembership = cvMembership, cf = cf)
     if (InitType == "EM"){
         Init = EMInit(obsCol, splineObj, nknots, select$opt_rank, sigmaSq, eigenfList)
@@ -259,15 +264,26 @@ MFPCA_VNDiv = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlList1, 
 oneReplicate_VNDiv = function(seedJ){
     set.seed(seedJ + repID * 300)
     source("./oneReplicate/oneRep-VNDiv.R")
-
+    cvMembership = getCVPartition_seed(samplesize, nFold = 10, seedJ)
 #    fit = MFPCA_VNDiv(obsCol, mOrder, nKnots, r.set, lambdaSeq, controlList1,
 #                      controlList2, nFold, sig2hat, InitType = "EM")
-    fit = MFPCA_VNDiv(obsCol, mOrder, nKnots, r.set, lambdaSeq, controlList1,
-                      controlList2, nFold, sig2hat, eigenfList, InitType)
-    opt_lambda = fit$opt_lambda
-    opt_rank = fit$opt_rank
-    loss = fit$loss
-    return(list("loss" = loss, "lambda" = opt_lambda, "rank" = opt_rank))
+    fit = try(MFPCA_VNDiv(obsCol, mOrder, nKnots, r.set, lambdaSeq, controlList1,
+                      controlList2, nFold, sig2hat, eigenfList, InitType, cvMembership) )
+    
+    if (inherits(fit, "try-error")){
+        converge = 0
+        opt_lambda = NULL
+        opt_rank = NULL
+        loss = NULL
+    } else {
+        converge = 1
+        opt_lambda = fit$opt_lambda
+        opt_rank = fit$opt_rank
+        loss = fit$loss
+    }
+    
+    
+    return(list("loss" = loss, "lambda" = opt_lambda, "rank" = opt_rank, "converge" = converge))
 }
 
 

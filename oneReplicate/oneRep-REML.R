@@ -101,29 +101,31 @@ if (DataType == "cai"){
     
     sig.EM = 2
     #M.set = seq(6, 16, by = 2)
-    M.set = seq(15,21, by = 1)
+    M.set = seq(10,20, by = 1)
     r.set = 8
 } else if (DataType == "easy"){
     tmin = 0
     tmax = 1
     eigenfList = get_eigenfunList_Paul("easy")
-    obsCol = get_allObs_Paul(samplesize, M=5,r=3, "easy", "Gaussian", alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
+    obsCol = get_allObs_Paul(samplesize, M=5,r=3, "easy", scoreType, alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
     M.set = seq(4, 12, by = 1)
     r.set = 3
     sig.EM = 1
+    CVmethod = "like"
 } else if (DataType == "prac"){
     tmin = 0
     tmax = 1
     eigenfList = get_eigenfunList_Paul("prac")
-    obsCol = get_allObs_Paul(samplesize, M=10, r=5, "prac", "Gaussian", alpha = 0.6, nmin=2,nmax=10,a=1,b=1,sig=1/4)
+    obsCol = get_allObs_Paul(samplesize, M=10, r=5, "prac", scoreType, alpha = 0.6, nmin=2,nmax=10,a=1,b=1,sig=1/4)
     M.set = seq(8, 15, by = 1)
     r.set = 5
     sig.EM = 1
+    CVmethod = "like"
 } else if (DataType == "hybrid"){
     tmin = 0
     tmax = 1
     eigenfList = get_eigenfunList_Paul("hybrid")
-    obsCol = get_allObs_Paul(samplesize, M=10, r=10, "hybrid", "Gaussian", alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
+    obsCol = get_allObs_Paul(samplesize, M=10, r=10, "hybrid", scoreType, alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
     M.set = seq(8, 15, by = 1)
     r.set = 5
     sig.EM = 1
@@ -135,7 +137,7 @@ newObsCol = obsCol[, -2]
 newObsCol[ , c(2,3)] <- newObsCol[ ,c(3,2)]
 colnames(newObsCol)[c(2,3)] = colnames(newObsCol)[c(3,2)]
 # Change the data to matrix form
-newObsCol = as.matrix(sapply(newObsCol, as.numeric)) 
+#newObsCol = as.matrix(sapply(newObsCol, as.numeric)) 
 
 
 
@@ -165,5 +167,6 @@ for (i in 1:n){
     cur[,2]<-temp
     data.list.new[[i]][[1]]<-cur
 }
+
 
 

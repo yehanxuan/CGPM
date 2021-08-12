@@ -229,6 +229,16 @@ eigenfd<-eigend$u
 eigenfd<-eigenfd/sqrt(indext[2]-indext[1]) ##eigenfd[,i] is the ith eigenfunction
 return(list(eigenfd,eigenvd))
 }
+
+###
+EigenC_LOC = function(covmatrixd, indext){
+  eigend = eigen(covmatrixd)
+  eigenvd = eigend$values
+  eigenvd<-eigenvd*(indext[2]-indext[1]) 
+  eigenfd = eigend$vectors
+  eigenfd<-eigenfd/sqrt(indext[2]-indext[1])
+  return(list(eigenfd, eigenvd))
+}
 ###########################################III: Generte eigenfunctions and eigenvalues
 ###eigen functions: orthonormal; Psi=t(B)%*%Phi, B: M by r; Phi: M by m_i  
 Eigenf<-function(t,B,basis.method="sin",R.inv=NULL,grid=NULL){

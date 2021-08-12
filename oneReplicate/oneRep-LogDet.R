@@ -130,6 +130,7 @@ if (DataType == "cai"){
   pcaKappaSqrt = sqrt(pcaKappa)
   eigenfList = get_eigenfunList(pcaTrans, fExpNum, splitP)
   obsCol = get_allObs(eigenfList, samplesize, pcaKappaSqrt, noiseSigma = 1, obsNumLower, obsNumUpper, scoreType)
+  M.set = seq(10, 20, by = 4)
   nKnots = 18
   M.EM = nKnots + 2
   r.set = 8
@@ -139,9 +140,12 @@ if (DataType == "cai"){
   tmin = 0
   tmax = 1
   eigenfList = get_eigenfunList_Paul("easy")
-  obsCol = get_allObs_Paul(samplesize, M=5,r=3, "easy", "Gaussian", alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
+  obsCol = get_allObs_Paul(samplesize, M=5,r=3, "easy", scoreType, alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
   nKnots = 10
   M.EM = nKnots + 2
+  
+  select_Method = "knots"
+  M.set = seq(4, 12, by = 1)  # select by knots without penalty
   r.set = 3
   splineObj = new(orthoSpline, tmin, tmax, mOrder, nKnots)
   sig2hat = 1/16
@@ -149,10 +153,12 @@ if (DataType == "cai"){
   tmin = 0
   tmax = 1
   eigenfList = get_eigenfunList_Paul("prac")
-  obsCol = get_allObs_Paul(samplesize, M=10, r=5, "prac", "Gaussian", alpha = 0.6, nmin=2,nmax=10,a=1,b=1,sig=1/4)
+  obsCol = get_allObs_Paul(samplesize, M=10, r=5, "prac", scoreType, alpha = 0.6, nmin=2,nmax=10,a=1,b=1,sig=1/4)
   #nKnots = 15
   nKnots = 8
+  M.set = seq(8, 15, by = 1)
   M.EM = nKnots + 2
+  select_Method = "knots"
   r.set = 5
   splineObj = new(orthoSpline, tmin, tmax, mOrder, nKnots)
   sig2hat = 1/16
@@ -160,9 +166,10 @@ if (DataType == "cai"){
   tmin = 0
   tmax = 1
   eigenfList = get_eigenfunList_Paul("hybrid")
-  obsCol = get_allObs_Paul(samplesize, M=10, r=10, "hybrid", "Gaussian", alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
+  obsCol = get_allObs_Paul(samplesize, M=10, r=10, "hybrid", scoreType, alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
   nKnots = 15
   M.EM = nKnots + 2
+  M.set = seq(8, 15, by = 1)
   r.set = 5
   splineObj = new(orthoSpline, tmin, tmax, mOrder, nKnots)
   sig2hat = 1/16

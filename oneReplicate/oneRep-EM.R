@@ -99,27 +99,28 @@ if (DataType == "cai"){
     eigenfList = get_eigenfunList(pcaTrans, fExpNum, splitP)
     obsCol = get_allObs(eigenfList, samplesize, pcaKappaSqrt, noiseSigma = 1, obsNumLower, obsNumUpper, scoreType)
     
-    M.set = seq(7, 15, by = 2)
+    #M.set = seq(7, 15, by = 2)
+    M.set = seq(10, 20, by = 1)
     r.set = 8
 } else if (DataType == "easy"){
     tmin = 0
     tmax = 1
     eigenfList = get_eigenfunList_Paul("easy")
-    obsCol = get_allObs_Paul(samplesize, M=5,r=3, "easy", "Gaussian", alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
+    obsCol = get_allObs_Paul(samplesize, M=5,r=3, "easy", scoreType, alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
     M.set = seq(4, 12, by = 1)
     r.set = 3
 } else if (DataType == "prac"){
     tmin = 0
     tmax = 1
     eigenfList = get_eigenfunList_Paul("prac")
-    obsCol = get_allObs_Paul(samplesize, M=10, r=5, "prac", "Gaussian", alpha = 0.6, nmin=2,nmax=10,a=1,b=1,sig=1/4)
+    obsCol = get_allObs_Paul(samplesize, M=10, r=5, "prac", scoreType, alpha = 0.6, nmin=2,nmax=10,a=1,b=1,sig=1/4)
     M.set = seq(8, 15, by = 1)
     r.set = 5
 } else if (DataType == "hybrid"){
     tmin = 0
     tmax = 1
     eigenfList = get_eigenfunList_Paul("hybrid")
-    obsCol = get_allObs_Paul(samplesize, M=10, r=10, "hybrid", "Gaussian", alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
+    obsCol = get_allObs_Paul(samplesize, M=10, r=10, "hybrid", scoreType, alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4)
     M.set = seq(8, 15, by = 1)
     r.set = 5
 }
@@ -133,7 +134,8 @@ colnames(newObsCol)[c(2,3)] = colnames(newObsCol)[c(3,2)]
 
 
 #ini.method = "EM.self"
-basis.method = "bs"
+# basis.method = "bs"
+basis.method = "poly"
 sl.v = rep(0.5, 10)
 max.step = 50
 grid.l = seq(0,1,0.01)
@@ -159,6 +161,7 @@ for (i in 1:n){
     cur[,2]<-temp
     data.list.new[[i]][[1]]<-cur
 }
+
 
 
 
