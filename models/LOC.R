@@ -224,7 +224,8 @@ LocLin.Ini<-function(data.list,n,nmax,grid.l,grids,r){
     covmatrix<-covmatrix[timeindex,timeindex]
     
     ##get eigenfunctions and eigenvalues 
-    eigen.c<-EigenC(covmatrix,grids)
+   # eigen.c<-EigenC(covmatrix,grids)
+    eigen.c <- EigenC_LOC(covmatrix,grids)
     eigenf.c<-eigen.c[[1]][,1:r]
     eigenv.c<-eigen.c[[2]][1:r]
     
