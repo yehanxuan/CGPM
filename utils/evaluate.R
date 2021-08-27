@@ -121,7 +121,8 @@ Generate_fList = function(grids, eigenfunctions){
 }
 
 ComputeLoss = function(fList_est , fList_true){
-    pcaCompNum = length(fList_est)
+    #pcaCompNum = length(fList_est)
+  pcaCompNum = length(fList_true)
     lossMat = matrix(0, pcaCompNum, 1)
     tSeq = seq(0, 1, length.out = 5e3)
     deltaT = tSeq[2] - tSeq[1]
@@ -160,7 +161,8 @@ StoF = function(SHat, splineObj){
     Gamma = eigenmat %*% (SHat[[2]] %*% t(eigenmat))
     Gamma.svd  = eigen(Gamma, symmetric=TRUE)
     eigenval.est = Gamma.svd$values[1: numPCA]/length(tSeq)
-    eigenvec.est = Gamma.svd$vectors[ , 1:numPCA]
+    # Add drop = F 8/27/2021
+    eigenvec.est = Gamma.svd$vectors[ , 1:numPCA, drop = F]
     
         for (k in 1:numPCA){
         selR = 1:splineDF
@@ -168,7 +170,7 @@ StoF = function(SHat, splineObj){
         
             for (e in 1:numElem){
             # eFunSeq = bMatSeq %*% eVector[selR, k] ### 这个地方应该没有正则化
-            eFunSeq = eigenvec.est[ , k] * sqrt(length(tSeq))
+            eFunSeq = eigenvec.est[ , k, drop = F] * sqrt(length(tSeq))
             ###  Add something here to make it
             #Gamma = eFunSeq %*% (eValues * t(eFunSeq))
             eFun = approxfun(tSeq, eFunSeq)
