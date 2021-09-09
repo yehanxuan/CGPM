@@ -372,8 +372,9 @@ fpca.fit<-function(M.set,r,data.list,n,nmax,grid.l=seq(0,1,0.01),grids=seq(0,1,0
       #  loss = list(loss.ini, loss)
         loss = c(loss.ini, loss)
         ##check convergence
-        converge<-max(abs(gradB),abs(gradL))          ##converged? if zero
-        
+        # converge<-max(abs(gradB),abs(gradL))          ##converged? if zero
+        ## Maybe we need to modify here, 09/09/2021
+        converge = newton.result[[12]] # tol.c 
         if (r == 1){
             B.up = as.matrix(B.up)
         }
@@ -504,7 +505,9 @@ REML_CV = function(result, M.set, r.set, tol=1e-3){
       for (j in 1:length(M.set.c)){
         cv.mod[k, j+index.c] = result[[k]]$cv[j]
         cond.mod[k, j+index.c] = result[[k]]$converge[j]
-        if (cv.mod[k, j+index.c]!=(-99) && cond.mod[k, j+index.c] < tol){
+        ## Modify, we do not care about the CV ,09/09/2021
+        #cv.mod[k, j+index.c]!=(-99) &&
+        if (  cond.mod[k, j+index.c] < tol){
           cv.like[k, j+index.c] <- result[[k]]$`-2*loglike`["newton",][j]
         }
       }
@@ -561,7 +564,7 @@ fpca.format<-function(data.m){
 }
 
 
-MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = NULL, eigenfList = NULL){
+MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = NULL, eigenfList = NULL, CVmethod = "like"){
     tmin = 0
     tmax = 1
     newObsCol = obsCol[, -2]
@@ -573,7 +576,7 @@ MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = 
     max.step = 50
     grid.l = seq(0,1,0.01)
     grids= seq(0,1,0.002)
-    sig.EM = 1
+    #sig.EM = 1
     
     nmax<-max(table(newObsCol[,1]))
     L1<-min(as.numeric(newObsCol[,3]))              ##range of the time
@@ -595,7 +598,7 @@ MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = 
     }
     
     result = fpca.mle(newObsCol, M.set, r.set, ini.method, basis.method, sl.v, max.step, grid.l,
-             grids, eigenfList )
+             grids, eigenfList, CVmethod)
     grids.new = result$grid
     M_opt = result$selected_model[[1]]
     r_opt = result$selected_model[[2]]
@@ -680,7 +683,7 @@ oneReplicate_REML = function(seedJ){
   #  M_opt = select$M_opt
   #  r_opt = select$r_opt
     
-    result = fpca.mle(newObsCol, M.set, r.set, ini.method, basis.method, sl.v, max.step, grid.l, grids, eigenfList, CVmethod = "score")
+    result = fpca.mle(newObsCol, M.set, r.set, ini.method, basis.method, sl.v, max.step, grid.l, grids, eigenfList, CVmethod = "like")
   #  result = fpca.mle(newObsCol, M_opt, r_opt,ini.method, basis.method, sl.v, max.step,
   #                   grid.l, grids, eigenfList, CVmethod = "score")
     grids.new = result$grid
