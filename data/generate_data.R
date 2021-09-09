@@ -2,19 +2,20 @@
 
 
 library(tibble)
+library(mvtnorm)
 #' Repeat get_oneObs to get multiple observation groups
 #' 
 #' @param numSample (int) total number of observation groups
 get_allObs = function(eigenFList,
                       numSample, pcaKappaSqrt, noiseSigma, 
-                      obsNumLower, obsNumUpper, scoreType){
+                      obsNumLower, obsNumUpper, scoreType, noiseType = "Gaussian"){
     # pre allocation of memory to speed up code
     numElem = length(eigenFList[[1]])  # True, How many variate 
     obsMat = matrix(0, numSample*obsNumUpper*numElem, 4)
     startI = 1
     for(obsID in 1:numSample){
         tmp = get_oneObs(eigenFList, pcaKappaSqrt, noiseSigma, 
-                         obsNumLower, obsNumUpper, scoreType)
+                         obsNumLower, obsNumUpper, scoreType, noiseType)
         tmp = cbind(obsID, tmp)
         endI = startI + nrow(tmp) - 1
         #cat(endI, nrow(obsMat),"\n")
@@ -39,7 +40,7 @@ get_allObs = function(eigenFList,
 #' @param obsNumUpper (int) the upper bound of obs number
 get_oneObs = function(eigenFList,
                       pcaKappaSqrt, noiseSigma, 
-                      obsNumLower, obsNumUpper, scoreType){
+                      obsNumLower, obsNumUpper, scoreType, noiseType = "Gaussian"){
 
     numElem = length(eigenFList[[1]])
     numPCA = length(eigenFList)
@@ -67,7 +68,14 @@ get_oneObs = function(eigenFList,
         elemObsNum = sample(obsNumLower:obsNumUpper, 1)
         
         obsT = runif(elemObsNum, 0, 1)
-        obsY = rnorm(elemObsNum, sd = noiseSigma)
+        if (noiseType == "Gaussian"){
+            obsY = rnorm(elemObsNum, sd = noiseSigma)
+        } else if (noiseType == "t") {
+            obsY = rt(elemObsNum, df = 3)*noiseSigma/1.725
+        } else if (noiseType == "uniform") {
+            obsY = runif(elemObsNum, min = -sqrt(3), max = sqrt(3))*noiseSigma
+        }
+        
         for(k in 1:numPCA){
             obsY = obsY + score[k] * eigenFList[[k]][[e]](obsT)
         }
@@ -509,17 +517,44 @@ get_eigenfunList_Paul = function(Type, seedU = 7){
         }
         result = c(result, list(tmp))
     }
-    
     return(result)
 }
 
 
-get_allObs_Paul = function(numSample, M, r, Type, ScoreType, alpha, nmin, nmax, a, b, sig){
+get_eigenfunList_Paul_NU = function(Type) {
+    grids= seq(0,1,0.002)
+    numElem = 1
+    result = list()
+    if (Type == "easyNU") {
+        data(easy)
+        eigenF = easy$eigenfunctions
+        numPCA = nrow(eigenF)
+    } else if (Type == "pracNU"){
+        data(prac)
+        eigenF = prac$eigenfunctions
+        numPCA = nrow(eigenF)
+    }
+    
+    NewGrids = qbeta(grids, shape1 = 4, shape2 = 1 )
+    for (pcaID in 1:numPCA) {
+        tmp = list()
+        for (elemID in 1:numElem) {
+            efun_NU = approxfun(NewGrids, eigenF[pcaID, ], rule = 2)
+            tmp1 = efun_NU(grids)/sqrt(sum(efun_NU(grids)^2)/length(grids))
+            efun = approxfun(grids, tmp1, rule = 2)
+            tmp = c(tmp, list(efun))
+        }
+        result = c(result, list(tmp))
+    }
+    return(result)
+}
+
+get_allObs_Paul = function(numSample, M, r, Type, ScoreType, alpha, nmin, nmax, a, b, sig, noiseType = "Gaussian"){
     numElem = 1
     obsMat = matrix(0, numSample*obsNumUpper*numElem, 4)
     startI = 1
     for (obsID in 1:numSample){
-        tmp = get_oneObs_Paul(M, r, Type, ScoreType, alpha, nmin, nmax, a, b, sig)
+        tmp = get_oneObs_Paul(M, r, Type, ScoreType, alpha, nmin, nmax, a, b, sig, noiseType = noiseType)
         tmp = cbind(obsID, tmp)
         endI = startI + nrow(tmp) - 1
         obsMat[startI:endI, ] = tmp 
@@ -539,11 +574,18 @@ get_allObs_Paul = function(numSample, M, r, Type, ScoreType, alpha, nmin, nmax, 
 
 
 get_oneObs_Paul = function(M, r, Type, ScoreType, alpha = 0.6, nmin, nmax, a=1,
-                           b=1, sig, seedU = 7){
+                           b=1, sig, seedU = 7, noiseType = "Gaussian"){
     result = numeric(0)
     L.v<-MeasL(nmin,nmax,a,b)
     t.v<-L.v
-    e.v<-rnorm(length(L.v))*sig
+    if (noiseType == "Gaussian") {
+        e.v<-rnorm(length(L.v))*sig
+    } else if (noiseType == "t") {
+        e.v <- rt(length(L.v), df = 3)*sig/1.725
+    } else if (noiseType == "uniform") {
+        e.v <- runif(length(L.v), min = -sqrt(3), max = sqrt(3))*sig
+    }
+    
     
     e = 1
     result.all = RandomCurve_Paul(t.v, M, r, Type, ScoreType, alpha, seedU)
@@ -594,6 +636,28 @@ RandomCurve_Paul = function(t.v, M, r, Type, ScoreType, alpha, seedU = 7){
             efun = approxfun(grids, eigenF[i, ], rule = 2)
             FList = c(FList, list(efun))
         }
+    } else if (Type == "easyNU") {
+        data(easy)
+        eigenF = easy$eigenfunctions
+        FList = list()
+        NewGrids = qbeta(grids, shape1 = 4, shape2 = 1 )
+        for (i in 1:nrow(eigenF)){
+            efun_NU = approxfun(NewGrids, eigenF[i, ], rule = 2)
+            tmp = efun_NU(grids)/sqrt(sum(efun_NU(grids)^2)/length(grids))
+            efun = approxfun(grids, tmp, rule = 2)
+            FList = c(FList, list(efun))
+        }
+    } else if (Type == "pracNU") {
+        data(prac)
+        eigenF = prac$eigenfunctions
+        FList = list()
+        NewGrids = qbeta(grids, shape1 = 4, shape2 = 1 )
+        for (i in 1:nrow(eigenF)){
+            efun_NU = approxfun(NewGrids, eigenF[i, ], rule = 2)
+            tmp = efun_NU(grids)/sqrt(sum(efun_NU(grids)^2)/length(grids))
+            efun = approxfun(grids, tmp, rule = 2)
+            FList = c(FList, list(efun))
+        }
     }
     
     result = numeric(length(t.v))
@@ -602,7 +666,7 @@ RandomCurve_Paul = function(t.v, M, r, Type, ScoreType, alpha, seedU = 7){
         eigen.f = rbind(eigen.f, FList[[j]](t.v))
     }
     
-    if ( (Type == "easy")||(Type == "prac") ){
+    if ( (Type == "easy")||(Type == "prac") || (Type == "easyNU") ||(Type == "pracNU")){
         eigen.v = matrix(Eigenv(r, method = "algebra", alpha, beta = 1, r1 = 3, r2 = 7, gamma = 2), r, length(t.v))
     } else if (Type == "hybrid"){
         eigen.v = matrix(Eigenv(r, method = "hybrid", alpha, beta = 1, r1 = 3, r2 = 7, gamma = 2), r1+r2, length(t.v))
