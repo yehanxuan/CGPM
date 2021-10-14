@@ -611,7 +611,7 @@ MFPCA_pred = function(train_data, order,nknots, rank, lambdaSeq, controlList1, c
 }
 
 MFPCA_pred_new = function(train_data, mOrder, nKnots, rank, lambdaSeq, controlList1, controlList2,
-                          nFold, sig2hat, method, InitType){
+                          nFold, sig2hat, method, InitType, cvMembership ){
     tmin = 0
     tmax = 1
     splineObj = new(orthoSpline, tmin, tmax, mOrder, nKnots)
@@ -639,7 +639,7 @@ MFPCA_pred_new = function(train_data, mOrder, nKnots, rank, lambdaSeq, controlLi
         opt_rank = fit$opt_rank
         model = fit$model
     } else if (method == "REML"){
-        fit = MFPCA_REML(train_data, M.set, rank, ini.method = "EM", sig2hat, splineObj)
+        fit = MFPCA_REML(train_data, M.set, rank, ini.method = "EM", sig2hat, splineObj, eigenfList = NULL,CVmethod = "like", cvMembership = cvMembership)
         opt_lambda = fit$opt_knots
         opt_rank = fit$opt_rank
         model = fit$model
@@ -648,6 +648,17 @@ MFPCA_pred_new = function(train_data, mOrder, nKnots, rank, lambdaSeq, controlLi
         opt_lambda = 0 
         opt_rank = rank 
         model = fit 
+    } else if (method == "LogDetKnots") {
+        fit = MFPCA_LogDet(train_data, mOrder, M.set, rank, controlList1, controlList2, 
+                           nFold, sig2hat, eigenfList = NULL, InitType)
+        opt_lambda = fit$opt_lambda
+        opt_rank = fit$opt_rank
+        model = fit$model 
+    }
+    
+    if (method == "LogDetKnots"){
+        splineObj_new = new(orthoSpline, 0, 1, mOrder, opt_lambda-2)
+        pred_result = Estimate_score(model, splineObj_new, DataList, meanModel)
     }
     pred_result = Estimate_score(model, splineObj, DataList, meanModel)
     MSFE = MSFE(pred_result$pred_YList, DataList$pred_obsYList)
@@ -663,9 +674,10 @@ oneReplicate_pred = function(seedJ){
     set.seed(seedJ + repID * 300)
     source("simuSettings/simuSetting-pred.R")
     source("oneReplicate/oneRep-pred.R")
-    
+    samplesize = length(unique(train_data$obsID))
+    cvMembership = getCVPartition_seed(samplesize, nFold = 10, seedJ)
     # fit = MFPCA_pred(train_data, mOrder, nKnots, rank, lambdaSeq, controlList1, controlList2, nFold = 10, SInit = XInit, sigmaSq = sig2hat)
-    fit = MFPCA_pred_new(train_data, mOrder, nKnots, rank, lambdaSeq, controlList1, controlList2, nFold, sig2hat, method, InitType)
+    fit = MFPCA_pred_new(train_data, mOrder, nKnots, rank, lambdaSeq, controlList1, controlList2, nFold, sig2hat, method, InitType, cvMembership)
     MSFE = fit$MSFE
     lambda = fit$lambda
     rank = fit$rank
@@ -678,8 +690,6 @@ oneReplicateWrap_pred = function(seedJ){
     try({
         eval = oneReplicate_pred(seedJ)
     })
-    
-    
     return(eval)
 }
 

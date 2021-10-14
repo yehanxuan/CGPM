@@ -16,17 +16,19 @@ repID = as.numeric(args[3])
 samplesize = as.numeric(args[4])
 scoreType = args[5]
 InitType = args[6]
+noiseType = args[7]
 
     
 #scoreType = NULL
 
 
-method = "LogDet"
-DataType = "prac"
+method = "REML"
+DataType = "pracSin"
 repID = 2
 samplesize = 500
 scoreType = "Gaussian"
 InitType = "EM"
+noiseType = "Gaussian"
     
 source("./data/generate_data.R")
 source("./models/LogDet.R")
@@ -58,6 +60,7 @@ maxIter = 8
 result1 = list()
 result2 = list()
 result3 = list()
+result4 = list()
 if (method == "mFPCA"){
     for (i in 1:ceiling(maxIter/nCPUS)){
         print(i)
@@ -101,9 +104,11 @@ if (method == "mFPCA"){
         tmp1 = lapply(tmp, function(x) x[[1]])
         tmp2 = lapply(tmp, function(x) x[[2]])
         tmp3 = lapply(tmp, function(x) x[[3]])
+        tmp4 = lapply(tmp, function(x) x[[4]])
         result1 = c(result1, tmp1)
         result2 = c(result2, tmp2)
         result3 = c(result3, tmp3)
+        result4 = c(result4, tmp4)
     }
 } else if (method =="EM") {
     for (i in 1:ceiling(maxIter/nCPUS)){
@@ -126,9 +131,11 @@ if (method == "mFPCA"){
         tmp1 = lapply(tmp, function(x) x[[1]])
         tmp2 = lapply(tmp, function(x) x[[2]])
         tmp3 = lapply(tmp, function(x) x[[3]])
+        tmp4 = lapply(tmp, function(x) x[[4]])
         result1 = c(result1, tmp1)
         result2 = c(result2, tmp2)
         result3 = c(result3, tmp3)
+        result4 = c(result4, tmp4)
     } 
 } else if (method == "LOC") {
     for (i in 1:ceiling(maxIter/nCPUS)){
@@ -177,9 +184,11 @@ if (method == "mFPCA"){
         tmp1 = lapply(tmp, function(x) x[[1]])
         tmp2 = lapply(tmp, function(x) x[[2]])
         tmp3 = lapply(tmp, function(x) x[[3]])
+        tmp4 = lapply(tmp, function(x) x[[4]])
         result1 = c(result1, tmp1)
         result2 = c(result2, tmp2)
         result3 = c(result3, tmp3)
+        result4 = c(result4, tmp4)
     }
 } else if ((method == "VNDiv")||(method == "frobDiverg") ){
     for (i in 1:ceiling(maxIter/nCPUS)){
@@ -206,9 +215,11 @@ if (method == "mFPCA"){
         tmp1 = lapply(tmp, function(x) x[[1]])
         tmp2 = lapply(tmp, function(x) x[[2]])
         tmp3 = lapply(tmp, function(x) x[[3]])
+        tmp4 = lapply(tmp, function(x) x[[4]])
         result1 = c(result1, tmp1)
         result2 = c(result2, tmp2)
         result3 = c(result3, tmp3)
+        result4 = c(result4, tmp4)
     }
 } else if (method == "Power"){
     for (i in 1:ceiling(maxIter/nCPUS)){
@@ -240,77 +251,33 @@ if (method == "mFPCA"){
 
 
 
-Final = list("MSE" = result1, "lambda" = result2, "rank" = result3)
+Final = list("MSE" = result1, "lambda" = result2, "rank" = result3, "converge" = result4)
 #Final = list("rank" = rank, "lambda" = lambda, "Err" = Err)
 #Err = compute(result1)
 #Err 
-
+Final$MSE[which(Final$converge != 0 )]
+compute(Final$MSE[which(Final$converge != 0 )])
 #lambda = result2
 #table(unlist(lambda))
 
 #rank = result3
 #table(unlist(rank))
+folder = DataType
 
-if (method == "mFPCA"){
-    savepath = paste0("./data/method-", method, "nKnots-", nKnots, ".RData")
-} else if (method == "REML"){
-    if ( !is.null(scoreType) ){
-        if (!is.null(InitType)){
-            savepath = paste0("./data/method-", method , "-", DataType, "-", samplesize, "-", scoreType, "-", InitType, ".RData")
-        } else {
-            savepath = paste0("./data/method-", method , "-", DataType, "-", samplesize, "-", scoreType, ".RData")
-        }
-    } else {
-    savepath = paste0("./data/method-", method , "-", DataType, "-", samplesize, ".RData") 
-    }
-} else if (method == "EM"){
-    if ( !is.null(scoreType)){
-        if (!is.null(scoreType)){
-            savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, "-", scoreType, "-", InitType, ".RData")
-        } else {
-        savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, "-", scoreType, ".RData")
-        } 
-    } else {
-        savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, ".RData")
-    }
-} else if (method == "LOC"){
-    if (!is.null(scoreType)){
-        savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, "-", scoreType, "-", InitType, ".RData")
-    } else {
-        savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, ".RData")
-    }
-} else if (method == "LogDet"){
-    if (!is.null(InitType)){
-        if (!is.null(scoreType)){
-            savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, "-", nKnots, "-", scoreType, "-", InitType, ".RData")
-        } else {
-            savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, "-", nKnots, "-", InitType, ".RData")
-        }
-    } else {
-        savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, "-", nKnots, ".RData")
-    }
-} else if (method == "VNDiv"){
-    if (!is.null(InitType)){
-        if (!is.null(scoreType)){
-            savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, "-", nKnots, "-", scoreType, "-", InitType, ".RData")
-        } else {
-            savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, "-", nKnots, "-", InitType, ".RData")
-        }
-    } else {
-        savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize,"-", nKnots ,".RData")
-    }
-} else if (method == "frobDiverg" ){
-    if (!is.null(InitType)){
-        if (!is.null(scoreType)){
-            savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, "-", nKnots, "-", scoreType, "-", InitType, ".RData")
-        } else {
-            savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, "-", nKnots, "-", InitType, ".RData")
-        }
-    } else {
-        savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize,"-", nKnots ,".RData")
-    }
-} else if (method == "Power"){
-    savepath = paste0("./data/method-", method, "-", DataType, "-", samplesize, "-", nKnots, "-", scoreType, "-", InitType, ".RData")
+if (file.exists(folder)) {
+    cat("The folder already exists")
+} else {
+    dir.create(folder)
+}
+
+
+if (method == "REML") {
+    savepath = paste0("./", DataType, "/method-", method, "-", DataType, "-", samplesize, "-",  scoreType, "-", InitType, "-", noiseType, ".RData")
+} else if (method == "EM") {
+    savepath = paste0("./", DataType, "/method-", method, "-", DataType, "-", samplesize, "-",  scoreType, "-", InitType, "-", noiseType, ".RData")
+} else if (method == "LogDet") {
+    savepath = paste0("./", DataType, "/method-", method, "-", DataType, "-", samplesize, "-",  scoreType, "-", InitType, "-", noiseType,
+                      "-", nKnots,"-", select_Method, ".RData")
 }
 
 

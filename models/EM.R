@@ -562,7 +562,7 @@ MFPCA_EM = function(obsCol, M.set, r.set, sig.EM, splineObj = NULL, eigenfList =
    #select = EM_selection(newObsCol, M.set, r.set, basis.EM = "poly", nFold = 10)
    select = EM_selection(newObsCol, M.set, r.set, basis.EM = "poly", nFold = 10, eigenfList, InitType)
    IniVal = Initial(select$r_opt, ini.method = "EM", data.list.new, n, nmax, grid.l, grids,
-                    M.EM = select$M_opt, iter.num = 50, basis.EM = "poly", sig.EM = sig.EM, InitType)
+                    M.EM = select$M_opt, iter.num = 50, basis.EM = "poly", sig.EM = sig.EM, eigenfList, InitType)
    sig2hat = IniVal[[1]]
    covmatrix.ini<-IniVal[[2]]
    eigenf.ini<-IniVal[[3]]

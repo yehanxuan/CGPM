@@ -389,7 +389,9 @@ Newton.New<-function(B.c, phi.aux, sig.c, Lambda.c,data.list,n,sl.v,max.step=50,
  like.c<-try(loglike.all(B.c,phi.aux,sig.c,Lambda.c,data.list,n))
  error.c<-inherits(like.c, "try-error")
  if (error.c){
-   like[i+1]<-(-99)
+   # This is the -2loglikihood, we should set this very large 09/09/2021
+   # like[i+1]<- (-99)
+   like[i+1]<- 1e7
    break()
  }
  like[i+1]<-like.c 
@@ -465,7 +467,13 @@ Newton.New<-function(B.c, phi.aux, sig.c, Lambda.c,data.list,n,sl.v,max.step=50,
  if (!is.null(eigenfList)){
    eigenfunctions = Generate_REML_eigen(basis.method = "poly", grids, B.c, Lambda.c, R.inv, L1, L2)
   # loss = c(loss, computeLoss_REML(eigenfunctions, eigenfList, grids.new))
-   loss[[i]] = computeLoss_REML(eigenfunctions, eigenfList, grids.new)
+   #loss[[i]] = computeLoss_REML(eigenfunctions, eigenfList, grids.new)
+   if (dim(B.c)[2] == 1) {
+     loss[[i]] = computeLoss_REML(t(eigenfunctions), eigenfList, grids.new)
+   } else {
+     loss[[i]] = computeLoss_REML(eigenfunctions, eigenfList, grids.new)
+   }
+     # modified when r = 1
  }
  
  
@@ -478,7 +486,9 @@ Newton.New<-function(B.c, phi.aux, sig.c, Lambda.c,data.list,n,sl.v,max.step=50,
  error.c<-inherits(like.c, "try-error")
  if (error.c){
    print("warning: like.c try error.")
-   like[i+1]<-(-99)
+   # -2*loglike should be large, 09/09/2021
+   #like[i+1]<-(-99)
+   like[i+1]<- 1e7
    break()
  }
  
@@ -508,7 +518,7 @@ Newton.New<-function(B.c, phi.aux, sig.c, Lambda.c,data.list,n,sl.v,max.step=50,
 ##return
  # i = i + 1
    ### Add a step here
- result<-list(like,B.result,lam.result,sig.result,gradB.result,gradL.result,i,cond,error.c, TimeMatrix, lossVec)
+ result<-list(like,B.result,lam.result,sig.result,gradB.result,gradL.result,i,cond,error.c, TimeMatrix, lossVec, tol.c)
  return(result)
 }
 

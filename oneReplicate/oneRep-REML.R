@@ -51,25 +51,24 @@ if (DataType == "cai"){
     M.set = seq(8, 16, by = 2)
     r.set = 8
 } else if (DataType == "FourierOrth"){
-    a = seq(0,1, length.out = 7)  ### Useless, only create a sequence of length 7
-    pcaTrans = Generate_rescale_U(seedJ, a)
+    
     fExpNum = 5
     pcaCompNum = fExpNum * 2
-#    pcaTrans = Generate_pcaTrans(seedJ = 7, pcaCompNum)
+    pcaTrans = matrix(rnorm(pcaCompNum^2), pcaCompNum, pcaCompNum)
+    pcaTrans = qr.Q(qr(pcaTrans))
+    
     splitP = c(-1e-9, 2+1e-9)
     pcaKappa = c(1, 0.66, 0.52, 0.07, 9.47e-3, 1.28e-3, 1.74e-4, 2.35e-5, 3.18e-6, 4.30e-7 )
     pcaKappaSqrt = sqrt(pcaKappa)
     eigenfList = get_eigenfunList(pcaTrans, fExpNum, splitP)
     ## Set score Type, uniform or t-distribution
-    # scoreType = "uniform"
-    # scoreType = "t"
-    # scoreType = "Gaussian"
     obsCol = get_allObs(eigenfList, samplesize, pcaKappaSqrt, noiseSigma = 1/4, obsNumLower, obsNumUpper, scoreType)
     ## Set knots and ranks
-    M.set = seq(8, 16, by = 1)
-    r.set = 6
+    sig.EM = 1
+    M.set = seq(9, 18, by = 1)
+    r.set = 4
+    CVmethod = "like"
    # splineObj = new(orthoSpline, tmin, tmax, mOrder, nKnots)
-    sig.EM = 1/4
 } else if ( DataType == "NonUnif" ){
     tmin = 0
     tmax = 1
@@ -129,7 +128,81 @@ if (DataType == "cai"){
     M.set = seq(8, 15, by = 1)
     r.set = 5
     sig.EM = 1
+} else if (DataType == "easyNU") {
+    tmin = 0
+    tmax = 1
+    shape1 = 2
+    shape2 = 2
+    eigenfList = get_eigenfunList_Paul_NU("easyNU", shape1, shape2)
+    obsCol = get_allObs_Paul(samplesize, M=5,r=3, "easyNU", scoreType, alpha = 0.6, nmin=2, nmax=10, a=1, b=1, sig=1/4, noiseType, shape1, shape2)
+    M.set = seq(4, 12, by = 1)
+    r.set = 3
+    sig.EM = 1
+    CVmethod = "like"
+} else if (DataType == "pracNU") {
+    tmin = 0
+    tmax = 1
+    shape1 = 2
+    shape2 = 2
+    eigenfList = get_eigenfunList_Paul_NU("pracNU", shape1, shape2)
+    obsCol = get_allObs_Paul(samplesize, M=10, r=5, "pracNU", scoreType, alpha = 0.6, nmin=2,nmax=10,a=1,b=1,sig=1/4, noiseType, shape1, shape2)
+    M.set = seq(8, 15, by = 1)
+    r.set = 5
+    sig.EM = 1
+    CVmethod = "like"
+} else if (DataType == "easySin") {
+    Mdata = 5
+    rdata = 3
+    pcaTrans = matrix(rnorm(Mdata*rdata), Mdata, rdata)
+    pcaTrans = qr.Q(qr(pcaTrans))
+    eigenfList = get_eigenfunList_PaulNoSpline("easySin", pcaTrans)
+    obsCol = get_allObs_PaulNoSpline(samplesize, M = Mdata, r = rdata, DataType, pcaTrans,
+                                     scoreType, alpha = 0.6, nmin = 2, nmax = 10, a=1, b=1, sig = 1/4, noiseType)
+    M.set = seq(4, 12, by = 1)
+    r.set = 3
+    sig.EM = 1
+    CVmethod = "like"
+} else if (DataType == "pracSin") {
+    Mdata = 10
+    rdata = 5
+    pcaTrans = matrix(rnorm(Mdata*rdata), Mdata, rdata)
+    pcaTrans = qr.Q(qr(pcaTrans))
+    eigenfList = get_eigenfunList_PaulNoSpline("pracSin", pcaTrans)
+    obsCol = get_allObs_PaulNoSpline(samplesize, M=Mdata, r=rdata, DataType, pcaTrans,
+                                     scoreType, alpha = 0.6, nmin=2,nmax=10,a=1,b=1,sig=1/4, noiseType)
+    #M.set = seq(8, 15, by = 1)
+    M.set = seq(13, 23 ,by = 1)
+    r.set = 5
+    sig.EM = 1
+    CVmethod = "like"
+} else if ((DataType == "NonEqualSquare") || (DataType == "NonEqual3/2") || (DataType == "NonEqualRoot")) {
+    M = 10
+    r = 5
+    pcaTrans = matrix(rnorm(M*r), M, r)
+    pcaTrans = qr.Q(qr(pcaTrans))
+    eigenfList = get_eigenfunList_NonEqual(M, pcaTrans, method = DataType)
+    obsCol = get_allObs_PaulNoEqual(samplesize, M, r, eigenfList, pcaTrans, scoreType,
+                                    alpha = 0.6, nmin = 2, nmax = 10, a=1, b=1, sig = 1/4, 
+                                    noiseType)
+    M.set = seq(8, 15, by = 1)
+    r.set = 5
+    sig.EM = 2
+    CVmethod = "like"
+} else if (DataType == "NonEqualRootFix") {
+    M = 10
+    r = 5
+    pcaTrans = diag(M)[, c(3:5, 8:9)]
+    eigenfList = get_eigenfunList_NonEqual(M, pcaTrans, method = "NonEqualRoot")
+    eigenfList = get_eigenfunList_NonEqual(M, pcaTrans, method = "NonEqualRoot")
+    obsCol = get_allObs_PaulNoEqual(samplesize, M, r, eigenfList, pcaTrans, scoreType,
+                                    alpha = 0.6, nmin = 2, nmax = 10, a=1, b=1, sig = 1/4, 
+                                    noiseType)
+    M.set = seq(8, 15, by = 1)
+    r.set = 5
+    sig.EM = 2
+    CVmethod = "like"
 }
+
 
 
 ## Data processing

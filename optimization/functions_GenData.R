@@ -75,6 +75,13 @@ result<-apply(matrix(t.v),1,B.cubic)
 return(result)
 }
 
+## 
+BC.basis.Non = function(t, knots) {
+  M <- length(knots)
+  deltaSeq = diff(knots)
+      (t - knots)/deltaSeq 
+}
+
 ##make it orthonormal
 BC.basis.orth<-function(knots,grids){
 bs<-apply(matrix(grids),1,BC.basis,knots=knots)
@@ -110,6 +117,14 @@ result<-BC.orth(t,knots,R.inv)
 return(result)
 }
 
+
+## orthogonalized cubic B-spline on [0,1] with total M basis (Non-equally spaced knots)
+Basis.Poly.Square = function(t, M, R.inv) {
+  delta <- 1/(M-3)
+  knots <- c(-delta, seq(0, 1, delta)^2, 1+delta) 
+  result <- BC.orth(t, knots, R.inv)
+  return(result)
+}
 
 ######
 ##(iii) natural spline: "ns"
@@ -259,12 +274,18 @@ result<-numeric(r)
  }
  
  if(basis.method=="spike"){
+ #phi.c<-Basis.Spike(t,R.inv)[1:M] 09/10/2021
  phi.c<-Basis.Spike(t,R.inv)[1:M]
  }
  
  if(basis.method=="ns"){
  phi.c<-Basis.NS(t,grid,R.inv)
  }
+  
+ if (basis.method == "polySquare") {
+ phi.c <- Basis.Poly.Square(t, M, R.inv)   
+ }
+ 
  result<-t(B)%*%matrix(phi.c)
  return(result)
 }

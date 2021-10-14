@@ -507,7 +507,7 @@ REML_CV = function(result, M.set, r.set, tol=1e-3){
         cond.mod[k, j+index.c] = result[[k]]$converge[j]
         ## Modify, we do not care about the CV ,09/09/2021
         #cv.mod[k, j+index.c]!=(-99) &&
-        if (  cond.mod[k, j+index.c] < tol){
+        if (  cv.mod[k, j+index.c]!=(-99) && cond.mod[k, j+index.c] < tol){
           cv.like[k, j+index.c] <- result[[k]]$`-2*loglike`["newton",][j]
         }
       }
@@ -564,7 +564,7 @@ fpca.format<-function(data.m){
 }
 
 
-MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = NULL, eigenfList = NULL, CVmethod = "like"){
+MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = NULL, eigenfList = NULL, CVmethod = "like", cvMembership = NULL){
     tmin = 0
     tmax = 1
     newObsCol = obsCol[, -2]
@@ -597,8 +597,18 @@ MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = 
         data.list.new[[i]][[1]]<-cur
     }
     
-    result = fpca.mle(newObsCol, M.set, r.set, ini.method, basis.method, sl.v, max.step, grid.l,
-             grids, eigenfList, CVmethod)
+    if (CVmethod == "like") {
+      select = REML_selection(newObsCol, M.set,r.set,ini.method,nFold = 10, sig.EM, eigenfList, cvMembership)
+      M_opt = select$M_opt
+      r_opt = select$r_opt
+      result = fpca.mle(newObsCol, M.set, r.set, ini.method, basis.method, sl.v, max.step, grid.l,
+                        grids, eigenfList)
+    } else {
+      result = fpca.mle(newObsCol, M.set, r.set, ini.method, basis.method, sl.v, max.step, grid.l,
+                        grids, eigenfList, CVmethod)
+    }
+    
+    
     grids.new = result$grid
     M_opt = result$selected_model[[1]]
     r_opt = result$selected_model[[2]]
@@ -629,6 +639,8 @@ MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = 
     step = result$step
     return(list("opt_knots" = M_opt, "opt_rank" = r_opt, "loss" = loss, "model" = model, "step" = step))
 }
+
+
 
 
 REML_selection = function(newObsCol, M.set, r.set, ini.method, nFold=10, sig.EM=1, eigenfList = NULL,cvMembership = NULL){
@@ -678,18 +690,17 @@ REML_selection = function(newObsCol, M.set, r.set, ini.method, nFold=10, sig.EM=
 oneReplicate_REML = function(seedJ){
     set.seed(seedJ + repID * 300)
     source("./oneReplicate/oneRep-REML.R")
-   # cvMembership = getCVPartition_seed(n, nFold = 10, seedJ)
-  #  select = REML_selection(newObsCol, M.set,r.set,ini.method,nFold,sig.EM,eigenfList, cvMembership)
-  #  M_opt = select$M_opt
-  #  r_opt = select$r_opt
+    # use 10-CV for fair comparison 
+    cvMembership = getCVPartition_seed(n, nFold = 10, seedJ)
+    select = REML_selection(newObsCol, M.set,r.set,ini.method,nFold,sig.EM,eigenfList, cvMembership)
+    M_opt = select$M_opt
+    r_opt = select$r_opt
     
-    result = fpca.mle(newObsCol, M.set, r.set, ini.method, basis.method, sl.v, max.step, grid.l, grids, eigenfList, CVmethod = "like")
-  #  result = fpca.mle(newObsCol, M_opt, r_opt,ini.method, basis.method, sl.v, max.step,
-  #                   grid.l, grids, eigenfList, CVmethod = "score")
+    result = fpca.mle(newObsCol, M_opt, r_opt, ini.method, basis.method, sl.v, max.step, grid.l, grids, eigenfList)
     grids.new = result$grid
     
-    M_opt = result$selected_model[[1]]
-    r_opt = result$selected_model[[2]]
+   # M_opt = result$selected_model[[1]]
+    # r_opt = result$selected_model[[2]]
     
     conv = result$converge[as.character(r_opt), as.character(M_opt)]
     if (conv < 1e-3){
