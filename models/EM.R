@@ -46,12 +46,7 @@ EM<-function(data.list,n,nmax,grids,M.EM,iter.num,r.EM,basis.EM,sig.EM, eigenfLi
         B.orthobasis <- qr.Q(qr(B.basis)) ### orthonormalized spline basis used in EM
     }
     
-    if (basis.EM == "BSpline"){
-        splineBasis = new(orthoSpline, 0, 1, 3, M.EM)
-        B.basis <- t(splineBasis$evalSpline(grids))
-        B.orthobasis = qr.Q(qr(B.basis))
-        
-    }
+    
     
     if(basis.EM=="poly"){
         
@@ -527,7 +522,7 @@ EM.CV = function(result, M.set, r.set){
 }
 
 
-MFPCA_EM = function(obsCol, M.set, r.set, sig.EM, splineObj = NULL, eigenfList = NULL,InitType = NULL){
+MFPCA_EM = function(obsCol, M.set, r.set, sig.EM, eigenfList = NULL,InitType = NULL){
     tmin = 0
     tmax = 1
     newObsCol = obsCol[, -2]
@@ -571,9 +566,12 @@ MFPCA_EM = function(obsCol, M.set, r.set, sig.EM, splineObj = NULL, eigenfList =
    #    grids.new = res$workGrid
    step  = IniVal[[8]]
    obj = IniVal[[9]]
-   
+   Time = IniVal[[10]]
    eigenfest = t(eigenf.ini)
    
+   
+   
+   splineObj = new(orthoSpline, 0, 1, 4, select$M_opt - 2)
    if (!is.null(splineObj)){
      K = splineObj$getDoF()
      basisMat = splineObj$evalSpline(grids)
@@ -605,7 +603,7 @@ MFPCA_EM = function(obsCol, M.set, r.set, sig.EM, splineObj = NULL, eigenfList =
    }
    
    
-   return(list("opt_knots" = M_opt, "opt_rank" = r_opt, "loss" = loss, "model" = model, "step" = step, "obj" = obj))
+   return(list("opt_knots" = M_opt, "opt_rank" = r_opt, "loss" = loss, "model" = model, "step" = step, "obj" = obj, "Time" = Time))
 }
 
 
@@ -723,14 +721,6 @@ EMInit = function(obsCol, splineObj, nKnots, r, sigmaSq, eigenfList = NULL){
 
 Generate_EM_eigen = function(basis.method,alpha, theta, k, df, grids, R.inv){
     if(basis.method=="poly"){
-        
-     #   lmin<-0
-     #   lmax<-1
-     #   delta<-(lmax-lmin)/(df-3)
-        # M.EM degree of freedom
-      #  knots<-c(seq(lmin,lmax,by=delta),lmax+delta,lmax+2*delta)
-      #  bs<-apply(matrix(grids),1, BC.orth,knots=knots,R.inv=R.inv)
-      #  B.orthobasis<-t(bs)*sqrt(grids[2]-grids[1])
         splineBasis = new(orthoSpline, 0, 1, 4, df - 2)
         B.basis = t(splineBasis$evalSpline(grids))
         B.orthobasis = B.basis

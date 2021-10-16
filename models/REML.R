@@ -76,7 +76,7 @@ fpca.mle<-function(data.m, M.set,r.set,ini.method="EM", basis.method="bs",sl.v=r
     ## (v)apply fpca.fit on all combinations of M and r in M.set and r.set and rescale back
     result<-NULL
     
-    iter.EM.num = 50 ### some bugs there 
+    iter.EM.num = 50 
     
     
     #### Add grids.new before fpca.fit
@@ -564,7 +564,7 @@ fpca.format<-function(data.m){
 }
 
 
-MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = NULL, eigenfList = NULL, CVmethod = "like", cvMembership = NULL){
+MFPCA_REML = function(obsCol, M.set, r.set, InitType, sig.EM = 1, CVmethod = "like", eigenfList = NULL, cvMembership = NULL){
     tmin = 0
     tmax = 1
     newObsCol = obsCol[, -2]
@@ -597,6 +597,14 @@ MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = 
         data.list.new[[i]][[1]]<-cur
     }
     
+    if (InitType == "EM"){
+      ini.method = "EM"
+    } else if (InitType == "LOC"){
+      ini.method = "loc"
+    } else if (InitType == "LS"){
+      ini.method = "LS"
+    }
+    
     if (CVmethod == "like") {
       select = REML_selection(newObsCol, M.set,r.set,ini.method,nFold = 10, sig.EM, eigenfList, cvMembership)
       M_opt = select$M_opt
@@ -614,6 +622,7 @@ MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = 
     r_opt = result$selected_model[[2]]
     eigenfest = result$eigenfunctions
     
+    splineObj = new(orthoSpline, 0, 1, 4, M_opt - 2)
     if (!is.null(splineObj)){
       K = splineObj$getDoF()
       basisMat = splineObj$evalSpline(grids.new)
@@ -629,15 +638,16 @@ MFPCA_REML = function(obsCol, M.set, r.set, ini.method, sig.EM = 1, splineObj = 
     sigmaSq = result$error_var
     # True function interpolation    # eigenfList = get_eigenfunList(pcaTrans, fExpNum
     model = list(eigenFunctions = fList_est)
-    model = c(model, list(tmin = tmin, tmax = tmax, SFinal = XInit, sigmaSq = sigmaSq,
-    numPCA = r_opt, numElem = 1, elemLevels = "1" ))
     if (is.null(eigenfList)){
         loss = NULL
     } else {
         loss = evaluateLoss(model, eigenfList)
     }
     step = result$step
-    return(list("opt_knots" = M_opt, "opt_rank" = r_opt, "loss" = loss, "model" = model, "step" = step))
+    model = c(model, list(tmin = tmin, tmax = tmax, SFinal = XInit, sigmaSq = sigmaSq,
+                          numPCA = r_opt, numElem = 1, elemLevels = "1" ))
+    Time = result$Time
+    return(list("opt_knots" = M_opt, "opt_rank" = r_opt, "loss" = loss, "model" = model, "step" = step, "Time" = Time))
 }
 
 
@@ -650,6 +660,10 @@ REML_selection = function(newObsCol, M.set, r.set, ini.method, nFold=10, sig.EM=
   grid.l = seq(0,1,0.01)
   grids= seq(0,1,0.002)
   #sig.EM = 1
+  nSample = length(unique(newObsCol$obsID))
+  if (is.null(cvMembership)){
+    cvMembership = getCVPartition(nSample, nFold)  
+  }
   
   L1 = length(r.set)
   L2 = length(M.set)
@@ -753,24 +767,7 @@ fpcaLS = function(obj, k, df, grid = seq(0.01, 1, length = 100), maxit = 50, tol
     } 
     
     
-    
-    if (basis.method == "BSpline"){
-        splineBasis = new(orthoSpline, 0, 1, 3, df)
-        B <- t(splineBasis$evalSpline(grid))
-        B.orth = qr.Q(qr(B)) 
-        B <- B.orth[timeindex, ]
-    }
     if(basis.method=="poly"){
-        #  print("poly")
-        ###R.inv<-R.inverse(df)
-
-        #lmin<-0
-        #lmax<-1
-        #delta<-(lmax-lmin)/(df-3)
-        #knots<-c(seq(lmin,lmax,by=delta),lmax+delta,lmax+2*delta)
-        #bs<-apply(matrix(grid),1, BC.orth,knots=knots,R.inv=R.inv)
-        #bs<-t(bs)*sqrt(grid[2]-grid[1])
-        #B<-bs[timeindex,]
         splineBasis = new(orthoSpline, 0, 1, 4, df - 2)
         B.orth <- t(splineBasis$evalSpline(grid))
         B <- B.orth[timeindex, ]

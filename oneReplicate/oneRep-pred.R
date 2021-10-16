@@ -11,15 +11,17 @@ test_Index = which(tmp == TRUE)
 train_data = obsCol[obsCol$obsID %in% train_Index, ] 
 test_data = obsCol[obsCol$obsID %in% test_Index, ]
 train_origin = train_data
-
-meanSeq = exp(seq(-10,-2, length.out = 7))
-mean_mu = MeanModel_GCV(train_data, splineObj, meanSeq)
-meanModel = fitMeanCurve(train_data, splineObj, lambda = mean_mu)
-train_data = subtractMeanCurve(meanModel, train_data)
-
 sig2hat = 1
 sig.EM = 1
 
+# Only subtract mean for our LogDet method, they have already subtract the mean
+#meanSeq = exp(seq(-10,-2, length.out = 7))
+#mean_mu = MeanModel_GCV(train_data, splineObj, meanSeq)
+#meanModel = fitMeanCurve(train_data, splineObj, lambda = mean_mu)
+#train_data = subtractMeanCurve(meanModel, train_data)
 
 
-DataList = Split_data(test_data, splineObj)
+
+
+
+#DataList = Split_data(test_data, splineObj)

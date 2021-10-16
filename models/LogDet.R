@@ -1,58 +1,4 @@
 
-## observation ID, n = 1, .. , N
-## observation element ID, each obs has Q vector elements 
-## observation obsT(time), obsY (value), obsSigma (uncertainty)
-## everything sorted by obsID
-## The column obsElem is optional. If not specified, the result is univariate FPCA.
-
-#' Create MFPCA with least square objective function
-#' @param dataF the data frame of the observation data. This should have four columns.
-#' @param splineObj spline object 
-#' @return an object of the class MFPCLoss, 
-#' the objective and gradient function can be evaluated.
-#' 
-createMFPCAObjLS = function(dataF, splineObj){
-    #obsID = as.numeric(as.factor(obsID))
-    if(is.character(dataF$obsID))
-        dataF$obsID = factor(dataF$obsID, ordered = TRUE)
-    if(is.factor(dataF$obsID))
-        dataF$obsID = as.numeric(dataF$obsID)
-    
-    sortI = sort(dataF$obsID, index.return = TRUE)$ix
-    obsID = dataF$obsID[sortI]
-    obsElem = dataF$obsElem[sortI]
-    obsT = dataF$obsT[sortI]
-    obsY = dataF$obsY[sortI]
-
-    bMat = splineObj$evalSpline(obsT)
-    ## The number of points for each obs ID
-    obsYList = list()
-    bMatList = list()
-    
-    for(i in unique(obsID)){
-        sel = (obsID == i)
-        obsYList = c(obsYList, list(obsY[sel]))
-        bMatList = c(bMatList, list(bMat[,sel]))
-    }
-    Omega = splineObj$get_Omega()
-    Omega = Omega / max(Omega)
-    optObj = new(uFPCAClassv2, obsYList, bMatList)
-    optObj$set_penaltyMatrix(Omega)
-    return(optObj)
-}
-
-
-
-#' Title
-#'
-#' @param dataF 
-#' @param splineObj spline object 
-#' @param obsSigma 
-#'
-#' @return
-#' @export
-#'
-#' @examples
 createMFPCAObjMLE = function(dataF, splineObj, obsSigma = 1){
     if(is.character(dataF$obsID))
         dataF$obsID = factor(dataF$obsID, ordered = TRUE)
@@ -93,46 +39,6 @@ createMFPCAObjMLE = function(dataF, splineObj, obsSigma = 1){
     optObj = new(mfpcaMLE, obsY, bMatLarge, obsSigma, obsIDCount)
     optObj$set_penaltyMatrix(Gamma)
     return(optObj)
-}
-
-#' @param obsCol the observation dataset
-#' @param lambda the tuning parameter
-#' @param SInit the initial value
-MFPCA_EstimateLS = function(obsCol, splineObj, 
-                          optRank,
-                          lambda,
-                          controlList1,controlList2, cvParam,
-                          SInit = NULL){
-    # Only one factor, this is the 
-    if(is.null(obsCol$elemID))
-        obsCol$elemID = factor(rep(1,length(obsCol$obsY)))
-
-    optObj = createMFPCAObjLS(obsCol, splineObj)
-    if(is.null(SInit))
-        SInit = MFPCA_Initial_LS(optObj, optRank, controlList1 )
-    optObj$set_tuningParameter(lambda)
-    
-    if(!is.null(cvParam)){
-        optObj$setCVFold(cvParam$cvMembership)
-        optObj$activateCV(cvParam$cf)
-    }
-    
-    estimate = MFPCA_SecondCore(optObj, optRank, controlList2, SInit)
-    SFinal = estimate$SEstimate
-    step = estimate$iter
-    like = estimate$obj
-    gap = estimate$gap
-    Time = estimate$Time
-
-    numElem = 1
-    model = MFPCA_convert(SFinal, splineObj, optRank, numElem)
-    model = c(model, 
-              list(tmin = tmin, tmax = tmax,
-                   SFinal = SFinal, 
-                   numPCA = optRank, numElem = numElem,
-                   elemLevels = levels(obsCol[,"elemID"])))
-    
-    return(model)
 }
 
 
@@ -273,77 +179,6 @@ MFPCA_Initial_LS = function(optObj, optRank, controlList){
 }
 
 
-
-
-#MFPCA_SecondCore = function(optObj, optRank,  controlList, XInit){
-    #list(alpha = 1e-2, sigma = 1e-2, tol = 1e-10,
-    #        iterMax = 400, iterSubMax = 30)
-    
-#    splineDF = optObj$get_totalDF()
-#    problem = new(manifoldOpt)
-#    problem$select_algorithm("sd")
-#    problem$set_eigenReg(splineDF, optRank)
-    
-    # The manifold loss version
-#    problem$setObjective(optObj$objF)
-#    problem$setGradient(optObj$gradF)
-#    problem$initial_point(XInit)
-#    problem$update_control(controlList)
-#    problem$solve()
-#    SFinal = problem$get_optimizer()
-    
-#    return(SFinal)
-#} 
-
-
-
-#### Model selection function
-#### output: optimal lambda, optimal rank, Error Matrix
-MFPCA_Selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, controlList2, nFold = 10){
-    nSample = length(unique(obsCol$obsID))
-    cvMembership = getCVPartition(nSample, nFold)
-    S1 = length(rankSeq)
-    S2 = length(lambdaSeq)
-    K = splineObj$getDoF()
-    ErrorMat = matrix(0, S1, S2)
-    for (i in 1:S1){
-        if (InitType == "EM"){
-            Init = EMInit(obsCol, splineObj, K, rankSeq[i], sigmaSq, eigenfList)
-            SInit = Init[[1]]
-            sigmaSq = Init[[2]]
-        } else if (InitType == "LS"){
-            Init = Init_LS(obsCol, splineObj, rankSeq[i], pert = 0.01, sigmaSq)
-            SInit = Init[[1]]
-            sigmaSq = Init[[2]]
-        } else if (InitType == "LOC"){
-            Init = LOCInit(obsCol, splineObj, rankSeq[i], sigmaSq)
-            SInit = Init[[1]]
-            sigmaSq = Init[[2]]
-        }
-        for (j in 1:S2){
-            testerror = rep(0, nFold)
-            for (cf in 1:nFold){
-                cvParam = list(cvMembership = cvMembership, cf = cf)
-                model = MFPCA_EstimateLS(obsCol, splineObj, rankSeq[i], lambdaSeq[j], controlList1, controlList2, cvParam, NULL)
-                ## compute the out of bag error
-                ErrorObj = createMFPCAObjLS(obsCol, splineObj)
-                ErrorObj$setCVFold(cvParam$cvMembership)
-                ErrorObj$activateCV(cvParam$cf)
-                testerror[cf] = ErrorObj$outOfBagError(model$SFinal)
-            }
-            ErrorMat[i, j] = mean(testerror)
-        }
-       
-    }
-    index = which(ErrorMat== min(ErrorMat), arr.ind = TRUE)
-    index1 = index[1]
-    index2 = index[2]
-    opt_rank = rankSeq[index1]
-    opt_lambda = lambdaSeq[index2]
-    opt_error = ErrorMat[index1, index2]
-    return(list("ErrorMat" = ErrorMat, "opt_lambda" = opt_lambda, "opt_rank" = opt_rank, "opt_error" = opt_error))
-}
-
 ### MLE selection
 MLE_selection = function(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, controlList2, nFold = 10, sigmaSq, eigenfList = NULL, InitType = NULL, SInit = NULL, cvMembership = NULL){
    
@@ -407,7 +242,6 @@ LogDet_select_knots = function(obsCol, order, r.set, M.set, controlList1, contro
   tmin = 0
   tmax = 1
   nSample = length(unique(obsCol$obsID))
-  # nSample = nlevels(obsCol$obsID)
   if (is.null(cvMembership)){
     cvMembership = getCVPartition(nSample, nFold)
   }
@@ -502,59 +336,15 @@ LogDet_CV = function(result, M.set, r.set){
 }
 
 
-#### The main function, select the parameter first then output the loss 
-MFPCA_leastSquares = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlList1, controlList2, nFold, SInit = NULL){
-    tmin = 0
-    tmax = 1
-    splineObj = new(orthoSpline, tmin, tmax, order, nknots)
-    K = splineObj$getDoF()
-    
-    
-    select = MFPCA_Selection(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, controlList2, nFold, SInit = SInit)
-    nSample = length(unique(obsCol$obsID))
-    cf = -1
-    cvMembership = getCVPartition(nSample, nFold)
-    cvParam = list(cvMembership = cvMembership, cf = cf)
-    model = MFPCA_EstimateLS(obsCol, splineObj, select$opt_rank, select$opt_lambda, controlList1, controlList2, cvParam, NULL)
-    loss = evaluateLoss(model,eigenfList)
-    opt_lambda = select$opt_lambda
-    opt_rank = select$opt_rank
-    return(list("opt_lambda" = opt_lambda, "opt_rank"= opt_rank, "loss" = loss))
-} 
-
-
 #### Main function for Rcpp MLE
 MFPCA_RcppMLE = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlList1, controlList2, nFold, sigmaSq, eigenfList = NULL, InitType = NULL,  SInit = NULL, cvMembership = NULL){
     tmin = 0
     tmax = 1
     splineObj = new(orthoSpline, tmin, tmax, order, nknots)
     K = splineObj$getDoF()
-    ### Add mean here 
+    # Add mean here 
      meanModel = fitMeanCurve(obsCol, splineObj, lambda = 0)
      obsCol = subtractMeanCurve(meanModel, obsCol)
- #   dataF = obsCol
- #   if(is.character(dataF$obsID))
- #       dataF$obsID = factor(dataF$obsID, ordered = TRUE)
- #   if(is.factor(dataF$obsID))
- #       dataF$obsID = as.numeric(dataF$obsID)
- #    sortI = sort(dataF$obsID, index.return = TRUE)$ix
- #    obsID = obsCol$obsID[sortI]
-     
- #    elemID = obsCol$elemID[sortI]
- #    obsT = obsCol$obsT[sortI]
-  #   grids= seq(0,1,0.002)
-  #   timeindex = floor(obsT * length(grids)) + 1
-  #   obsT = grids[timeindex]
-  #   obsY = dataF$obsY[sortI]
-     
-   #  splineBasis = new(orthoSpline, 0, 1, 4, nknots)
-#     B.orth <- t(splineBasis$evalSpline(grids))
-  #   B <- B.orth[timeindex, ]
-     
-   #  theta.zero <- solve(t(B) %*% B, t(B)) %*% obsY
-    # obsY <- obsY - B %*% theta.zero
-    # obsCol$obsY = obsY
-     
     
     select = MLE_selection(obsCol, splineObj, rankSeq, lambdaSeq, controlList1, controlList2, nFold, sigmaSq, eigenfList, InitType = InitType, cvMembership)
     nSample = length(unique(obsCol$obsID))
@@ -591,8 +381,8 @@ MFPCA_RcppMLE = function(obsCol, order, nknots, rankSeq, lambdaSeq, controlList1
 }
 
 
-MFPCA_LogDet = function(obsCol, order, M.set, r.set, controlList1, controlList2, nFold, sigmaSq, eigenfList = NULL,
-                        InitType = NULL, SInit = NULL, cvMembership = NULL){
+MFPCA_LogDet = function(obsCol, order, M.set, r.set, controlList1, controlList2, nFold, sigmaSq, 
+                        InitType = NULL,eigenfList = NULL, SInit = NULL, cvMembership = NULL){
   tmin = 0
   tmax = 1
   
@@ -630,91 +420,10 @@ MFPCA_LogDet = function(obsCol, order, M.set, r.set, controlList1, controlList2,
   M_opt = select$M_opt
   r_opt = select$r_opt
   converge = model$converge 
-  return(list("opt_lambda" = M_opt, "opt_rank" = r_opt, "loss" = loss, "model" = model, "converge" = converge ))
+  return(list("opt_lambda" = M_opt, "opt_rank" = r_opt, "loss" = loss, "model" = model, "converge" = converge, "meanModel" = meanModel))
 }
 
 
-
-### One replication of mFPCA(our) methods
-oneReplicate_mFPCA = function(seedJ){
-    set.seed(seedJ + repID * 300)
-    source("./code/oneRep-mFPCA.R")
-    
-    fit = MFPCA_leastSquares(obsCol, mOrder, nKnots, rankSeq, lambdaSeq, controlList1, controlList2, nFold, SInit=XInit)
-    opt_lambda = fit$opt_lambda
-    opt_rank = fit$opt_rank
-    loss = fit$loss
-    return(list("loss" = loss, "lambda" = opt_lambda, "rank" = opt_rank))
-}
-
-oneReplicateWrap_mFPCA = function(seedJ){
-    try({
-        eval = oneReplicate_mFPCA(seedJ)
-        })
-    
-    return(eval)
-}
-
-### restricted MLE in fpca package
-# oneReplicate_MLE = function(seedJ){
-#     set.seed(seedJ + repID * 300)
-#     source("./code/oneRep-MLE.R")
-#     result = fpca.mle(newObsCol, M.set, r.set, ini.method, basis.method, sl.v, max.step, grid.l, grids)
-#     grids.new = result$grid
-#     M_opt = result$selected_model[[1]]
-#     r_opt = result$selected_model[[2]]
-#     eigenfest = result$eigenfunctions
-#     # True function interpolation
-#     eigenfList = get_eigenfunList(pcaTrans, fExpNum, splitP)
-#     fList_est = Generate_fList(grids.new, eigenfest)
-#     loss = ComputeLoss(fList_est, eigenfList)
-#     return(list( "loss" = loss, "M_opt" = M_opt, "rank" = r_opt))
-# }
-# 
-# oneReplicateWrap_MLE = function(seedJ){
-#     try({
-#        eval = oneReplicate_MLE(seedJ) 
-#     })
-#     return(eval)
-# }
-
-oneReplicate_ini = function(seedJ){
-    set.seed(seedJ + repID * 300)
-    source("./code/oneRep-ini.R")
-#    res = FPCA(DatanewObsCol$Ly, DatanewObsCol$Lt, list(methodSelectK = 8))
-    if (ini.method == "loc"){
-        IniVal = Initial(r.set, ini.method, data.list.new, n, nmax, grid.l, grids, iter.num = 100, basis.EM = "ns", sig.EM)
-    } else if (ini.method == "EM.self"){
-        basis.EM="poly"
-        M.self = 20
-        IniVal = Initial(r.set, ini.method="EM",data.list.new,n,nmax,grid.l,grids,basis.EM=basis.EM,M.EM=M.self,sig.EM=sig.EM)
-    } else if (ini.method == "EM"){
-        select = EM_selection(newObsCol, M.set, r.set, basis.EM = "poly")
-        IniVal = Initial(r.set, ini.method ="EM", data.list.new, n, nmax, grid, grids, basis.EM = "poly",
-                         M.EM = select$M_opt, sig.EM = sig.EM)
-    }
-    
-    
-    sig2hat = IniVal[[1]]
-    covmatrix.ini<-IniVal[[2]]
-    eigenf.ini<-IniVal[[3]]
-    eigenv.ini<-IniVal[[4]]
-    like.ini<-IniVal[[5]]
-#    grids.new = res$workGrid
-    eigenfest = t(eigenf.ini)
-    eigenfList = get_eigenfunList(pcaTrans, fExpNum, splitP)
-    fList_est = Generate_fList(grids, eigenfest)
-    loss = ComputeLoss(fList_est, eigenfList)
-    r_opt = r.set
-    return(list("loss" = loss, "result2" = 0, "rank" = r_opt))
-}
-
-oneReplicateWrap_ini = function(seedJ){
-    try({
-        eval = oneReplicate_ini(seedJ)
-    })
-    return(eval)
-}
 
 oneReplicate_LogDet = function(seedJ){
 #    seedJ = seedJ
@@ -742,7 +451,7 @@ oneReplicate_LogDet = function(seedJ){
       opt_rank = fit$opt_rank
       loss = fit$loss
     }
-#    fit = MFPCA_RcppMLE(obsCol, mOrder, nKnots, r.set, lambdaSeq, controlList1, controlList2, nFold, sig2hat, InitType = "EM")
+
     
     return(list("loss" = loss, "lambda" = opt_lambda, "rank" = opt_rank, "converge" = converge))
 }
@@ -755,12 +464,7 @@ oneReplicateWrap_LogDet = function(seedJ){
 }
 
 Init_LS = function(dataF, splineObj, r, pert = 0.01, sigmaSq){
-    #   if(is.character(dataF$obsID))
-    #    dataF$obsID = factor(dataF$obsID, ordered = TRUE)
-    #if(is.factor(dataF$obsID))
-    #    dataF$obsID = as.numeric(dataF$obsID)
-    #sortI = sort(dataF$obsID, index.return = TRUE)$ix
-    #obsID = dataF$obsID[sortI]
+  
     newObsCol = dataF[, -2]
     newObsCol[ , c(2,3)] <- newObsCol[ ,c(3,2)]
     colnames(newObsCol)[c(2,3)] = colnames(newObsCol)[c(3,2)]
